@@ -1,9 +1,0 @@
-{
-  // 让 C/C++ 插件的 IntelliSense 使用 CMake 生成的编译数据库。
-  // 这样编辑器才知道 vcpkg 的头文件（在 $VCPKG_ROOT/installed/ 下）在哪，
-  // 否则 core/version.cpp 里的 #include <lz4.h> 会被标成红线。
-  //
-  // 该文件由 CMakeLists.txt 中的 CMAKE_EXPORT_COMPILE_COMMANDS 生成。
-  // 生成位置就是下面这个路径 —— 先跑一次 cmake --preset x64-static 才会有。
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/x64-static/compile_commands.json"
-}
