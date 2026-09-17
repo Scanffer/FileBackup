@@ -1,0 +1,43 @@
+# ---- 构建产物（CMakePresets.json 的 binaryDir） ----
+build/
+out/
+cmake-build-*/
+
+# ---- 编译/链接中间产物 ----
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.res
+*.tlog
+*.log
+
+# ---- IDE ----
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.user
+*.suo
+*.sln
+*.vcxproj*
+
+# ---- Python（tools/embed_web.py 等） ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- 编辑器/工具本地配置 ----
+.claude/
+.idea/
+
+# ---- 运行时产物 ----
+*.vbak
+backup-*/
+.restore-tmp/

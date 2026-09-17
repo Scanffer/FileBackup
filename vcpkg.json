@@ -1,0 +1,6 @@
+{
+  "name": "file-backup",
+  "version": "0.1.0",
+  "dependencies": ["zlib", "lz4", "zstd", "openssl", "nlohmann-json", "catch2"],
+  "builtin-baseline": "3723ec118c8354290925feb58d021a9205a3e772"
+}

@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "x64-static",
+      "displayName": "MSVC x64 静态链接（单 exe 交付）",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/x64-static",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+      }
+    },
+    {
+      "name": "x64-debug",
+      "inherits": "x64-static",
+      "displayName": "MSVC x64 静态链接（Debug）",
+      "binaryDir": "${sourceDir}/build/x64-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "x64-release", "configurePreset": "x64-static" },
+    { "name": "x64-debug", "configurePreset": "x64-debug" }
+  ],
+  "testPresets": [
+    { "name": "x64-release", "configurePreset": "x64-static", "output": { "outputOnFailure": true } }
+  ]
+}
