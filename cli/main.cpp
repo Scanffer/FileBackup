@@ -14,6 +14,8 @@
 
 #include "fs_utils.h"
 #include "version.h"
+#include "backup.h"
+#include <optional>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -42,6 +44,22 @@ void enable_utf8_console() {
 /// 而窄字符串在 MinGW 下无法构造 std::filesystem::path（见 wmain 的说明）。
 std::string narrow_ascii(const std::wstring& w) {
     return std::string(w.begin(), w.end());
+}
+
+std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
+                                     const std::wstring& key) {
+    for (int i = start; i < argc; ++i) {
+        const std::wstring a = argv[i];
+        if (a == key && i + 1 < argc) {
+            return std::wstring(argv[i + 1]);
+        }
+        if (a.size() > key.size() + 1 &&
+            a.compare(0, key.size(), key) == 0 &&
+            a[key.size()] == L'=') {
+            return a.substr(key.size() + 1);
+        }
+    }
+    return std::nullopt;
 }
 
 void print_usage(std::ostream& os) {
@@ -156,8 +174,35 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (command == L"backup" || command == L"restore" ||
-        command == L"list" || command == L"verify") {
+    if (command == L"backup" || command == L"restore") {
+        const auto src = find_opt(argc, argv, 2, L"--src");
+        const auto dst = find_opt(argc, argv, 2, L"--dst");
+
+        if (!src || !dst) {
+            std::cerr << "用法：FileBackup " << narrow_ascii(command)
+                    << " --src <目录> --dst <目录>\n";
+            return 1;
+        }
+
+        backup::MirrorOptions opts;
+        opts.src = *src;
+        opts.dst = *dst;
+
+        try {
+            const backup::MirrorResult r = backup::mirror_directory(opts);
+            std::cout << "完成：" << r.files_copied << " 个文件，"
+                    << r.bytes_copied << " 字节。\n";
+            if (r.files_skipped > 0) {
+                std::cout << "跳过 " << r.files_skipped << " 个（已存在）。\n";
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "失败：" << e.what() << "\n";
+            return 3;
+        }
+    }
+
+    if (command == L"list" || command == L"verify") {
         report_not_implemented(command);
         return 2;
     }

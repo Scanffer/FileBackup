@@ -10,6 +10,7 @@
 add_library(backup_core STATIC
     version.cpp
     fs_utils.cpp
+    backup.cpp
 )
 
 target_include_directories(backup_core

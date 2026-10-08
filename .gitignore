@@ -6,6 +6,7 @@ cmake-build-*/
 # ---- 编译/链接中间产物 ----
 *.obj
 *.o
+*.a
 *.exe
 *.dll
 *.lib
@@ -41,3 +42,10 @@ venv/
 *.vbak
 backup-*/
 .restore-tmp/
+
+# ---- 本地测试残留 ----
+/test_src/ 
+/test_bak/
+/test_restore/
+/测试源/ 
+/测试备份/
