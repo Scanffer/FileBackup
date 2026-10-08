@@ -15,6 +15,7 @@
 #include "fs_utils.h"
 #include "version.h"
 #include "backup.h"
+#include "pack.h"
 #include <optional>
 
 #ifdef _WIN32
@@ -174,32 +175,85 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (command == L"backup" || command == L"restore") {
-        const auto src = find_opt(argc, argv, 2, L"--src");
-        const auto dst = find_opt(argc, argv, 2, L"--dst");
+    if (command == L"backup") {
+        const auto src  = find_opt(argc, argv, 2, L"--src");
+        const auto dst  = find_opt(argc, argv, 2, L"--dst");
+        const auto pack = find_opt(argc, argv, 2, L"--pack");
 
         if (!src || !dst) {
-            std::cerr << "用法：FileBackup " << narrow_ascii(command)
-                    << " --src <目录> --dst <目录>\n";
+            std::cerr << "用法：FileBackup backup --src <目录> --dst <目标>\n"
+                        "      加 --pack vbak 打包成单文件归档\n";
             return 1;
         }
 
-        backup::MirrorOptions opts;
-        opts.src = *src;
-        opts.dst = *dst;
-
         try {
-            const backup::MirrorResult r = backup::mirror_directory(opts);
-            std::cout << "完成：" << r.files_copied << " 个文件，"
-                    << r.bytes_copied << " 字节。\n";
-            if (r.files_skipped > 0) {
-                std::cout << "跳过 " << r.files_skipped << " 个（已存在）。\n";
+            if (pack) {
+                if (*pack != L"vbak") {
+                    std::cerr << "不支持的打包格式："
+                            << narrow_ascii(*pack) << "\n";
+                    return 1;
+                }
+                backup::PackOptions o;
+                o.src     = *src;
+                o.archive = *dst;   // 打包时 --dst 是归档文件路径
+                const backup::PackResult r = backup::pack_directory(o);
+                std::cout << "打包完成：" << r.entries_written << " 个文件，"
+                        << r.bytes_written << " 字节。\n";
+            } else {
+                backup::MirrorOptions o;
+                o.src = *src;
+                o.dst = *dst;
+                const backup::MirrorResult r = backup::mirror_directory(o);
+                std::cout << "完成：" << r.files_copied << " 个文件，"
+                        << r.bytes_copied << " 字节。\n";
+                if (r.files_skipped > 0) {
+                    std::cout << "跳过 " << r.files_skipped << " 个（已存在）。\n";
+                }
             }
             return 0;
         } catch (const std::exception& e) {
             std::cerr << "失败：" << e.what() << "\n";
             return 3;
         }
+    }
+
+    if (command == L"restore") {
+        const auto archive = find_opt(argc, argv, 2, L"--archive");
+        const auto src     = find_opt(argc, argv, 2, L"--src");
+        const auto dst     = find_opt(argc, argv, 2, L"--dst");
+
+        if (!dst || (!archive && !src)) {
+            std::cerr << "用法：FileBackup restore --archive <归档> --dst <目录>\n"
+                        "      或 FileBackup restore --src <备份目录> --dst <目录>\n";
+            return 1;
+        }
+
+        try {
+            if (archive) {
+                backup::UnpackOptions o;
+                o.archive = *archive;
+                o.dst     = *dst;
+                const backup::UnpackResult r = backup::unpack_archive(o);
+                std::cout << "解包完成：" << r.entries_read << " 个文件，"
+                        << r.bytes_read << " 字节。\n";
+            } else {
+                backup::MirrorOptions o;
+                o.src = *src;
+                o.dst = *dst;
+                const backup::MirrorResult r = backup::mirror_directory(o);
+                std::cout << "还原完成：" << r.files_copied << " 个文件，"
+                        << r.bytes_copied << " 字节。\n";
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "失败：" << e.what() << "\n";
+            return 3;
+        }
+    }
+
+    if (command == L"list" || command == L"verify") {
+        report_not_implemented(command);
+        return 2;
     }
 
     if (command == L"list" || command == L"verify") {

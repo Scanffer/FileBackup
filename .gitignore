@@ -49,3 +49,7 @@ backup-*/
 /test_restore/
 /测试源/ 
 /测试备份/
+# 镜像/打包测试产物
+/test_mirror*/
+/test_unpack*/
+*.vbak
