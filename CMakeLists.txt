@@ -42,11 +42,13 @@ endif()
 #   分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
 #   可被 cli 与 server 共同链接。
 # ---------------------------------------------------------------------------
-add_subdirectory(core)    # backup_core 静态库：备份引擎
-add_subdirectory(cli)     # FileBackup.exe：命令行入口
+add_subdirectory(core)         # backup_core 静态库：备份引擎
+add_subdirectory(third_party)  # cpp_httplib：只有 include 路径的 INTERFACE 目标
+add_subdirectory(server)       # backup_server 静态库：Web GUI 的 HTTP 层（无 main）
+add_subdirectory(cli)          # FileBackup.exe：唯一入口，链接 core + server
 
 # ---------------------------------------------------------------------------
-# 第三方依赖：当前为零，全部用 C++17 标准库。
-# 压缩（M2）、加密（M3）、打包（M6）真正用到时再逐个引入，
-# 不提前接线 —— 免得项目还没用到它们就先被环境问题卡住。
+# 第三方依赖：目前只有一个 cpp-httplib（单头文件，见 third_party/）。
+# 压缩（M2）、加密（M3）等其余依赖仍不提前接线 ——
+# 免得项目还没用到它们就先被环境问题卡住。
 # ---------------------------------------------------------------------------

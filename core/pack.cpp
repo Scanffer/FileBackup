@@ -58,17 +58,6 @@ std::uint64_t read_u64(std::istream& is) {
     return v;
 }
 
-/// UTF-8 std::string -> std::filesystem::path。
-/// 同 backup.cpp：MinGW 下窄串构造会按 GBK 解释，中文崩，必须走 u8 通道。
-std::filesystem::path path_from_u8(const std::string& s) {
-#if defined(__cpp_lib_char8_t) && __cpp_lib_char8_t >= 201907L
-    return std::filesystem::path(
-        std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
-#else
-    return std::filesystem::u8path(s);
-#endif
-}
-
 }  // namespace
 
 // ------------------------------------------------------------------
@@ -171,7 +160,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
     char magic[4];
     in.read(magic, 4);
     if (!in || std::memcmp(magic, kMagic, 4) != 0) {
-        throw std::runtime_error("不是 VBAK 归档（magic 不匹配）");
+        throw std::runtime_error("不是 VBAK 归档(magic 不匹配）");
     }
 
     const std::uint16_t version = read_u16(in);

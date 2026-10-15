@@ -39,4 +39,13 @@ std::vector<FileEntry> list_files(const std::filesystem::path& root) {
     return files;
 }
 
+std::filesystem::path path_from_u8(const std::string& s) {
+#if defined(__cpp_lib_char8_t) && __cpp_lib_char8_t >= 201907L
+    return std::filesystem::path(
+        std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+#else
+    return std::filesystem::u8path(s);
+#endif
+}
+
 }  // namespace backup

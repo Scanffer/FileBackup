@@ -36,4 +36,14 @@ struct FileEntry {
 /// 再直接赋给 path 即可。详见 cli/main.cpp 中 wmain 的说明。
 std::vector<FileEntry> list_files(const std::filesystem::path& root);
 
+/// UTF-8 std::string -> std::filesystem::path。
+///
+/// 绝不能写 std::filesystem::path(s)：
+/// MinGW 下窄字符串构造会按本地代码页（GBK）解释，中文直接抛
+/// "Illegal byte sequence"。必须走 u8 通道。
+///
+/// 凡是「UTF-8 字符串 -> 路径」的地方都要走这里，不要各处自己写一份：
+/// 归档格式、manifest 里存的都是 UTF-8，HTTP 层从浏览器收到的也是 UTF-8。
+std::filesystem::path path_from_u8(const std::string& s);
+
 }  // namespace backup

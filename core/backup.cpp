@@ -7,23 +7,6 @@
 #include <vector>
 
 namespace backup {
-namespace {
-
-/// UTF-8 std::string -> std::filesystem::path。
-///
-/// 绝不能写 std::filesystem::path(s)：
-/// MinGW 下窄字符串构造会按本地代码页（GBK）解释，中文直接抛
-/// "Illegal byte sequence"。必须走 u8 通道。
-std::filesystem::path path_from_u8(const std::string& s) {
-#if defined(__cpp_lib_char8_t) && __cpp_lib_char8_t >= 201907L
-    return std::filesystem::path(
-        std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
-#else
-    return std::filesystem::u8path(s);
-#endif
-}
-
-}  // namespace
 
 MirrorResult mirror_directory(const MirrorOptions& opts) {
     std::error_code ec;

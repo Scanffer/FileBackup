@@ -9,14 +9,15 @@
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "fs_utils.h"
-#include "version.h"
 #include "backup.h"
+#include "fs_utils.h"
+#include "http_server.h"
 #include "pack.h"
-#include <optional>
+#include "version.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -54,8 +55,7 @@ std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
         if (a == key && i + 1 < argc) {
             return std::wstring(argv[i + 1]);
         }
-        if (a.size() > key.size() + 1 &&
-            a.compare(0, key.size(), key) == 0 &&
+        if (a.size() > key.size() + 1 && a.compare(0, key.size(), key) == 0 &&
             a[key.size()] == L'=') {
             return a.substr(key.size() + 1);
         }
@@ -63,37 +63,68 @@ std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
     return std::nullopt;
 }
 
+/// 解析 Web GUI 的启动参数。--port 不合法时返回 nullopt（已打印原因）。
+std::optional<backup::WebOptions> parse_web_options(int argc, wchar_t** argv) {
+    backup::WebOptions o;
+
+    if (const auto raw = find_opt(argc, argv, 2, L"--port")) {
+        // narrow_ascii 只用于这种「我们自己定的 ASCII 参数」，绝不用于路径。
+        const std::string s = narrow_ascii(*raw);
+        try {
+            o.port = std::stoi(s);
+        } catch (const std::exception&) {
+            std::cerr << "无效的端口：" << s << "\n";
+            return std::nullopt;
+        }
+        if (o.port < 1 || o.port > 65535) {
+            std::cerr << "端口超出范围（1-65535）：" << o.port << "\n";
+            return std::nullopt;
+        }
+    }
+
+    // --no-browser 不是可有可无的开关：没有它，每次 curl 做接口测试
+    // 都会弹出一个浏览器窗口。
+    o.open_browser = !find_opt(argc, argv, 2, L"--no-browser");
+
+    return o;
+}
+
 void print_usage(std::ostream& os) {
-    os <<
-        "FileBackup —— 文件备份软件\n"
-        "\n"
-        "用法：\n"
-        "  FileBackup <命令> [选项]\n"
-        "\n"
-        "命令：\n"
-        "  backup    备份目录树到指定位置\n"
-        "  restore   将备份内容还原到指定位置\n"
-        "  list      列出归档内容\n"
-        "  verify    校验归档完整性\n"
-        "\n"
-        "通用选项：\n"
-        "  -h, --help       显示本帮助\n"
-        "  -v, --version    显示版本\n"
-        "\n"
-        "开发调试（M1 期间用于检查目录遍历，非 README §7.1 的正式接口）：\n"
-        "  scan <目录>      列出该目录树下的所有文件\n"
-        "\n"
-        "示例（详见 README §7.1）：\n"
-        "  FileBackup backup  --src ./docs --dst ./bak/docs.vbak \\\n"
-        "                     --pack vbak --compress zstd --level 15 \\\n"
-        "                     --encrypt aes256cbc --password ******\n"
-        "  FileBackup restore --archive ./bak/docs.vbak --dst ./restored\n"
-        "  FileBackup list    --archive ./bak/docs.vbak\n"
-        "  FileBackup verify  --archive ./bak/docs.vbak\n"
-        "\n"
-        "两种输出模式（README §2.4）：\n"
-        "  目录镜像  备份到目录          —— 基础必做，M1\n"
-        "  单容器    备份到单个归档文件  —— 备选扩展，M6\n";
+    os << "FileBackup —— 文件备份软件\n"
+          "\n"
+          "用法：\n"
+          "  FileBackup <命令> [选项]\n"
+          "  FileBackup                      不带参数 = 双击启动图形界面\n"
+          "\n"
+          "命令：\n"
+          "  gui       打开图形界面（浏览器）\n"
+          "  backup    备份目录树到指定位置\n"
+          "  restore   将备份内容还原到指定位置\n"
+          "  list      列出归档内容\n"
+          "  verify    校验归档完整性\n"
+          "\n"
+          "通用选项：\n"
+          "  -h, --help       显示本帮助\n"
+          "  -v, --version    显示版本\n"
+          "\n"
+          "图形界面选项（仅 gui 子命令）：\n"
+          "  --port <端口>    起始端口，默认 8080；被占用时自动往后试\n"
+          "  --no-browser     不自动打开浏览器（调试接口时用）\n"
+          "\n"
+          "开发调试（M1 期间用于检查目录遍历，非 README §7.1 的正式接口）：\n"
+          "  scan <目录>      列出该目录树下的所有文件\n"
+          "\n"
+          "示例（详见 README §7.1）：\n"
+          "  FileBackup backup  --src ./docs --dst ./bak/docs.vbak \\\n"
+          "                     --pack vbak --compress zstd --level 15 \\\n"
+          "                     --encrypt aes256cbc --password ******\n"
+          "  FileBackup restore --archive ./bak/docs.vbak --dst ./restored\n"
+          "  FileBackup list    --archive ./bak/docs.vbak\n"
+          "  FileBackup verify  --archive ./bak/docs.vbak\n"
+          "\n"
+          "两种输出模式（README §2.4）：\n"
+          "  目录镜像  备份到目录          —— 基础必做，M1\n"
+          "  单容器    备份到单个归档文件  —— 备选扩展，M6\n";
 }
 
 void print_version() {
@@ -111,7 +142,8 @@ void report_not_implemented(const std::wstring& command) {
     }
 
     std::cerr << "命令 '" << narrow_ascii(command) << "' 尚未实现。\n"
-              << "计划于 " << milestone << " 交付，见 README §10 里程碑计划。\n";
+              << "计划于 " << milestone
+              << " 交付，见 README §10 里程碑计划。\n";
 }
 
 }  // namespace
@@ -137,12 +169,24 @@ int main(int argc, char** argv) {
 #endif
     enable_utf8_console();
 
+    // 启动 Web GUI。捕获引用是安全的：这个 lambda 只在 wmain 的作用域内调用。
+    const auto launch_gui = [&argc, &argv]() -> int {
+        const auto opts = parse_web_options(argc, argv);
+        if (!opts) return 1;
+        return backup::run_web_server(*opts);
+    };
+
+    // 无参数 = 双击启动，直接开界面。（早期版本这里是打印用法并返回 1。）
     if (argc < 2) {
-        print_usage(std::cerr);
-        return 1;
+        return launch_gui();
     }
 
     const std::wstring command = argv[1];
+
+    // 显式启动界面，便于带 --port / --no-browser 调用。
+    if (command == L"gui" || command == L"--gui" || command == L"web") {
+        return launch_gui();
+    }
 
     if (command == L"-h" || command == L"--help") {
         print_usage(std::cout);
@@ -171,43 +215,45 @@ int main(int argc, char** argv) {
             std::cout << file.size << "\t" << file.relative_path << "\n";
             total += file.size;
         }
-        std::cout << "\n共 " << files.size() << " 个文件，" << total << " 字节。\n";
+        std::cout << "\n共 " << files.size() << " 个文件，" << total
+                  << " 字节。\n";
         return 0;
     }
 
     if (command == L"backup") {
-        const auto src  = find_opt(argc, argv, 2, L"--src");
-        const auto dst  = find_opt(argc, argv, 2, L"--dst");
+        const auto src = find_opt(argc, argv, 2, L"--src");
+        const auto dst = find_opt(argc, argv, 2, L"--dst");
         const auto pack = find_opt(argc, argv, 2, L"--pack");
 
         if (!src || !dst) {
             std::cerr << "用法：FileBackup backup --src <目录> --dst <目标>\n"
-                        "      加 --pack vbak 打包成单文件归档\n";
+                         "      加 --pack vbak 打包成单文件归档\n";
             return 1;
         }
 
         try {
             if (pack) {
                 if (*pack != L"vbak") {
-                    std::cerr << "不支持的打包格式："
-                            << narrow_ascii(*pack) << "\n";
+                    std::cerr << "不支持的打包格式：" << narrow_ascii(*pack)
+                              << "\n";
                     return 1;
                 }
                 backup::PackOptions o;
-                o.src     = *src;
-                o.archive = *dst;   // 打包时 --dst 是归档文件路径
+                o.src = *src;
+                o.archive = *dst;  // 打包时 --dst 是归档文件路径
                 const backup::PackResult r = backup::pack_directory(o);
                 std::cout << "打包完成：" << r.entries_written << " 个文件，"
-                        << r.bytes_written << " 字节。\n";
+                          << r.bytes_written << " 字节。\n";
             } else {
                 backup::MirrorOptions o;
                 o.src = *src;
                 o.dst = *dst;
                 const backup::MirrorResult r = backup::mirror_directory(o);
                 std::cout << "完成：" << r.files_copied << " 个文件，"
-                        << r.bytes_copied << " 字节。\n";
+                          << r.bytes_copied << " 字节。\n";
                 if (r.files_skipped > 0) {
-                    std::cout << "跳过 " << r.files_skipped << " 个（已存在）。\n";
+                    std::cout << "跳过 " << r.files_skipped
+                              << " 个（已存在）。\n";
                 }
             }
             return 0;
@@ -219,12 +265,14 @@ int main(int argc, char** argv) {
 
     if (command == L"restore") {
         const auto archive = find_opt(argc, argv, 2, L"--archive");
-        const auto src     = find_opt(argc, argv, 2, L"--src");
-        const auto dst     = find_opt(argc, argv, 2, L"--dst");
+        const auto src = find_opt(argc, argv, 2, L"--src");
+        const auto dst = find_opt(argc, argv, 2, L"--dst");
 
         if (!dst || (!archive && !src)) {
-            std::cerr << "用法：FileBackup restore --archive <归档> --dst <目录>\n"
-                        "      或 FileBackup restore --src <备份目录> --dst <目录>\n";
+            std::cerr
+                << "用法：FileBackup restore --archive <归档> --dst <目录>\n"
+                   "      或 FileBackup restore --src <备份目录> --dst "
+                   "<目录>\n";
             return 1;
         }
 
@@ -232,28 +280,23 @@ int main(int argc, char** argv) {
             if (archive) {
                 backup::UnpackOptions o;
                 o.archive = *archive;
-                o.dst     = *dst;
+                o.dst = *dst;
                 const backup::UnpackResult r = backup::unpack_archive(o);
                 std::cout << "解包完成：" << r.entries_read << " 个文件，"
-                        << r.bytes_read << " 字节。\n";
+                          << r.bytes_read << " 字节。\n";
             } else {
                 backup::MirrorOptions o;
                 o.src = *src;
                 o.dst = *dst;
                 const backup::MirrorResult r = backup::mirror_directory(o);
                 std::cout << "还原完成：" << r.files_copied << " 个文件，"
-                        << r.bytes_copied << " 字节。\n";
+                          << r.bytes_copied << " 字节。\n";
             }
             return 0;
         } catch (const std::exception& e) {
             std::cerr << "失败：" << e.what() << "\n";
             return 3;
         }
-    }
-
-    if (command == L"list" || command == L"verify") {
-        report_not_implemented(command);
-        return 2;
     }
 
     if (command == L"list" || command == L"verify") {
