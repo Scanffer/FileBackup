@@ -13,11 +13,13 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include "backup.h"
 #include "fs_utils.h"
 #include "pack.h"
 #include "web_page.h"
+#include "webview_host.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -90,11 +92,43 @@ void server_socket_options(socket_t sock) {
 #endif
 }
 
+/// 用 Chromium 的「应用窗口」模式打开 url，成功返回 true。
+///
+/// `--app=` 是 Chromium 系通用开关：开一个**没有标签页、没有地址栏**的窗口，
+/// 关上就完事，视觉上就是个独立软件，而不是「又一个浏览器标签页」。
+///
+/// exe 只写文件名、不写全路径：Edge / Chrome 安装时都会在注册表
+///   HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\<exe>.exe
+/// 登记自己，ShellExecuteW 据此解析出完整路径。硬编码
+/// "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" 反而会在
+/// 非默认安装位置上翻车。
+bool open_in_app_mode(const wchar_t* exe, const std::wstring& url) {
+    // --no-first-run / --no-default-browser-check 是给「这台机器从没启动过
+    // 这个浏览器」兜底的。少了它们，全新环境下会先弹欢迎向导或
+    // 「把 Edge 设为默认浏览器？」把我们的界面顶掉 —— 演示当天很难看。
+    const std::wstring args = L"--app=" + url +
+                              L" --window-size=920,620"
+                              L" --no-first-run --no-default-browser-check";
+    const HINSTANCE r = ShellExecuteW(nullptr, L"open", exe, args.c_str(),
+                                      nullptr, SW_SHOWNORMAL);
+    // ShellExecuteW 的返回值是「伪装成 HINSTANCE 的错误码」：
+    // **> 32 才算成功**，<= 32 是 SE_ERR_* 错误码。
+    // 所以绝不能写 if (r) —— 那是个经典陷阱，失败时它照样非零。
+    return reinterpret_cast<INT_PTR>(r) > 32;
+}
+
 void open_browser(int port) {
 #ifdef _WIN32
+    // URL 必须是宽字符：ShellExecuteW 收窄串时用的是 ANSI 代码页。
     const std::wstring url =
         L"http://127.0.0.1:" + std::to_wstring(port) + L"/";
-    // URL 必须是宽字符：ShellExecuteW 收窄串时用的是 ANSI 代码页。
+
+    // Edge 在 Win11 上是自带的，排第一；Chrome 有就也能用。
+    if (open_in_app_mode(L"msedge.exe", url)) return;
+    if (open_in_app_mode(L"chrome.exe", url)) return;
+
+    // 兜底：一个 Chromium 浏览器都没有（LTSC 版、被企业策略移除、用户自己
+    // 卸了）就退回默认浏览器 —— 顶多多几个标签页，总比点了没反应强。
     ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr,
                   SW_SHOWNORMAL);
 #else
@@ -234,19 +268,44 @@ int run_web_server(const WebOptions& opts) {
     // bind 之后、listen 之前注册路由是安全的：线程池还没起来。
     register_routes(*svr);
 
-    if (opts.open_browser) {
-        // 用 start_handler 而不是另开一个线程去 sleep 等端口就绪。
-        // 它在 accept 循环启动的瞬间、于 listen 线程内执行，此时 socket
-        // 已经处于 listen 状态（bind_to_port 内部已调用 ::listen），
-        // 浏览器的连接会先在 backlog 里排队，不会出现「连不上」。
-        svr->set_start_handler([chosen] { open_browser(chosen); });
-    }
-
-    std::cout << "FileBackup 界面已启动：http://127.0.0.1:" << chosen << "/\n"
-              << "按 Ctrl+C 退出。\n";
+    const std::wstring url =
+        L"http://127.0.0.1:" + std::to_wstring(chosen) + L"/";
+    std::cout << "FileBackup 已启动：http://127.0.0.1:" << chosen << "/\n";
     std::cout.flush();
 
-    svr->listen_after_bind();  // 阻塞
+    // 服务放后台线程，主线程留给窗口的消息循环 —— WebView2 的回调全靠
+    // 消息派发，主线程被 listen 占住的话它永远初始化不完。
+    //
+    // 这里不需要再操心「窗口比服务先就绪」的竞态：bind_to_port 内部
+    // 已经调用过 ::listen，socket 处于监听状态，早到的连接会先在
+    // backlog 里排队。
+    std::thread server_thread([&svr] { svr->listen_after_bind(); });
+
+    if (opts.native_window) {
+        const webview::ShowResult r =
+            webview::show_url(url, L"FileBackup —— 文件备份");
+        if (r == webview::ShowResult::Closed) {
+            // 关窗口 = 退出程序。这正是原生窗口相对浏览器方案的价值：
+            // 窗口就在本进程里，关掉它我们能顺手把服务停了；浏览器方案
+            // 关掉标签页之后服务会一直挂着占住端口。
+            svr->stop();
+            server_thread.join();
+            std::cout << "窗口已关闭，服务停止。\n";
+            return 0;
+        }
+        // Unavailable：这台机器没装 WebView2 运行时（LTSC、或被企业策略
+        // 移除了 Edge），退回浏览器。窗口是隐藏创建的，所以用户不会看到
+        // 一个白窗口闪一下再消失。
+        std::cout << "（WebView2 不可用，改用浏览器打开）\n";
+    }
+
+    if (opts.open_browser) {
+        open_browser(chosen);
+    }
+    std::cout << "按 Ctrl+C 退出。\n";
+    std::cout.flush();
+
+    server_thread.join();  // 阻塞到进程被终止
     return 0;
 }
 

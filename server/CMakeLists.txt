@@ -13,8 +13,10 @@
 
 add_library(backup_server STATIC
     http_server.cpp
-    http_server.h   # 仅让 IDE 显示出来，不参与编译
-    web_page.h      # 同上
+    http_server.h     # 仅让 IDE 显示出来，不参与编译
+    web_page.h        # 同上
+    webview_host.cpp
+    webview_host.h    # 同上
 )
 
 # PUBLIC 而不是 PRIVATE：http_server.h 是给 cli/ 用的公开接口，
@@ -27,16 +29,32 @@ target_include_directories(backup_server
 target_link_libraries(backup_server
     PRIVATE backup_core
     PRIVATE cpp_httplib
+    PRIVATE webview2_sdk
 )
 
-# Winsock 必须显式链接。
-# httplib.h 里的 #pragma comment(lib, "ws2_32.lib") 是 MSVC 专有语法，
-# MinGW 下会被当成未知 pragma 忽略（编译不报错，链接时才炸）：
+# 系统库显式写全。
+#
+# MinGW 的默认 specs 会带一部分（user32 / shell32 / advapi32），所以
+# 之前只用 ShellExecuteW 的时候不写也编得过。但 ole32 不在默认里 ——
+# 少了它，链接阶段会报 undefined reference to `__imp_CoInitializeEx'。
+# 与其依赖「哪些在默认里」这个隐式约定，不如用到的都写出来。
+#
+# 另外，httplib.h 里那句 #pragma comment(lib, "ws2_32.lib") 是 MSVC 专有
+# 语法，MinGW 会当未知 pragma 忽略（编译不报错，链接时才炸）：
 #   undefined reference to `__imp_WSAStartup' / `__imp_select' / `__imp_bind'
-# PRIVATE 也会随 backup_server 传到最终 exe 的链接行，
+#
+# 这些是 PRIVATE，但会随 backup_server 传到最终 exe 的链接行，
 # 所以 cli/ 那边不需要再写一遍。
 if(WIN32)
-    target_link_libraries(backup_server PRIVATE ws2_32)
+    target_link_libraries(backup_server PRIVATE
+        ws2_32    # winsock —— httplib 用
+        ole32     # COM —— WebView2 用
+        user32    # 窗口
+        gdi32     # GetDeviceCaps / GetDC（按 DPI 算窗口尺寸）
+        shell32   # ShellExecuteW —— 浏览器兜底
+        dwmapi    # DwmSetWindowAttribute —— 深色标题栏
+        uuid      # CLSID_FileOpenDialog / IID_IFileOpenDialog —— 原生选择框
+    )
 endif()
 
 # 内嵌页面里有中文。GCC 默认输入输出就是 UTF-8，这里显式钉死，

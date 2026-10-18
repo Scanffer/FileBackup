@@ -31,6 +31,18 @@
 
 namespace {
 
+/// 声明进程为「每显示器 DPI 感知」。
+///
+/// **必须在创建任何窗口、初始化 WebView2 之前调用。** 否则 Windows 会把
+/// 整个窗口当成 96 DPI 的位图整体拉伸：125% 缩放下文字会明显发虚。
+/// WebView2 本身按 DPI 渲染，但它需要宿主先告诉系统自己的缩放比例。
+/// PerMonitorV2 还负责窗口跨不同缩放比例的显示器时的重新布局。
+void enable_high_dpi() {
+#ifdef _WIN32
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+#endif
+}
+
 /// Windows 控制台默认使用系统代码页（简体中文为 GBK），而本程序内部
 /// 一律用 UTF-8，两者不一致时中文会显示成乱码。启动时切到 UTF-8。
 void enable_utf8_console() {
@@ -82,8 +94,12 @@ std::optional<backup::WebOptions> parse_web_options(int argc, wchar_t** argv) {
         }
     }
 
+    // --browser 强制走浏览器，不开原生窗口。调界面时比 WebView2 好用 ——
+    // 浏览器有 F12，WebView2 默认没有。
+    o.native_window = !find_opt(argc, argv, 2, L"--browser");
+
     // --no-browser 不是可有可无的开关：没有它，每次 curl 做接口测试
-    // 都会弹出一个浏览器窗口。
+    // 都会弹出一个窗口。
     o.open_browser = !find_opt(argc, argv, 2, L"--no-browser");
 
     return o;
@@ -97,7 +113,7 @@ void print_usage(std::ostream& os) {
           "  FileBackup                      不带参数 = 双击启动图形界面\n"
           "\n"
           "命令：\n"
-          "  gui       打开图形界面（浏览器）\n"
+          "  gui       打开图形界面（独立窗口）\n"
           "  backup    备份目录树到指定位置\n"
           "  restore   将备份内容还原到指定位置\n"
           "  list      列出归档内容\n"
@@ -109,7 +125,8 @@ void print_usage(std::ostream& os) {
           "\n"
           "图形界面选项（仅 gui 子命令）：\n"
           "  --port <端口>    起始端口，默认 8080；被占用时自动往后试\n"
-          "  --no-browser     不自动打开浏览器（调试接口时用）\n"
+          "  --browser        用浏览器打开，不开原生窗口（浏览器有 F12，调界面时方便）\n"
+          "  --no-browser     什么都不开，只起服务（调接口时用）\n"
           "\n"
           "开发调试（M1 期间用于检查目录遍历，非 README §7.1 的正式接口）：\n"
           "  scan <目录>      列出该目录树下的所有文件\n"
@@ -167,6 +184,7 @@ int wmain(int argc, wchar_t** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
+    enable_high_dpi();
     enable_utf8_console();
 
     // 启动 Web GUI。捕获引用是安全的：这个 lambda 只在 wmain 的作用域内调用。

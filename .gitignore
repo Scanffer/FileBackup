@@ -9,6 +9,9 @@ cmake-build-*/
 *.a
 *.exe
 *.dll
+# 例外：WebView2 的引导 DLL 是 vendored 依赖（会被编进 exe 资源段），
+# 必须随源码提交，否则新组员 clone 下来构建出的 exe 在运行时找不到 loader。
+!third_party/webview2/WebView2Loader.dll
 *.lib
 *.exp
 *.pdb

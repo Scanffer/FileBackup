@@ -1,0 +1,16 @@
+// 把 WebView2Loader.dll 整份塞进 exe 的资源段。
+//
+// RCDATA = 原始二进制，windres 不会做任何加工。
+//
+// 为什么要嵌进 exe 而不是放在 exe 旁边：这个项目的交付形态是**单个 .exe**，
+// 多一个要分发的文件就破坏了这一点。运行时由 server/webview_host.cpp
+// 把它释放到临时目录再 LoadLibrary。
+//
+// "WEBVIEW2LOADER" 这个名字必须和 webview_host.cpp 里的 kLoaderResName 对得上。
+//
+// 路径是相对的：CMake 里给 windres 设了 WORKING_DIRECTORY 指向本目录，
+// 所以这里只写文件名。
+
+#include <windows.h>
+
+WEBVIEW2LOADER RCDATA "WebView2Loader.dll"

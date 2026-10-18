@@ -4,11 +4,25 @@ namespace backup {
 
 /// Web GUI 的启动选项。
 struct WebOptions {
-    int port = 8080;         ///< 起始端口；被占用时自动往后试
-    bool open_browser = true;  ///< 启动后是否自动打开默认浏览器
+    int port = 8080;  ///< 起始端口；被占用时自动往后试
+
+    /// 优先用 WebView2 原生窗口显示界面（关掉窗口 = 退出程序）。
+    /// 置 false 时直接用浏览器。--browser 会把它关掉。
+    bool native_window = true;
+
+    /// 允许「打开界面」这个动作。置 false 时只起服务不开任何窗口
+    /// （--no-browser，用于 curl 调接口）。
+    ///
+    /// 注意两者是**独立**的：native_window 那步起不来时，只要
+    /// open_browser 还是 true，就会退回浏览器。
+    bool open_browser = true;
 };
 
-/// 启动 Web GUI 的 HTTP 服务，**阻塞**直到进程被终止（Ctrl+C）。
+/// 启动 Web GUI，**阻塞**。
+///
+/// 两种结束方式：
+///   原生窗口模式 —— 用户关掉窗口，函数返回，进程可以退出
+///   浏览器模式   —— 一直服务到进程被终止（Ctrl+C）
 ///
 /// 返回建议的进程退出码：0 正常结束，1 端口全被占用、服务起不来。
 ///
