@@ -365,23 +365,39 @@ int main(int argc, char** argv) {
                 std::cout << "）：" << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
             } else {
-                if (compress || level || encrypt || password || filter_json ||
-                    filter_file || no_metadata) {
+                if (compress || level || encrypt || password) {
                     std::cerr << "--compress / --level / --encrypt / "
-                                 "--password / --filter / --no-metadata "
-                                 "只在 --pack vbak 模式下生效（镜像模式的"
-                                 "筛选/元数据将在下一阶段接入）。\n";
+                                 "--password 只在 --pack vbak 模式下生效。\n";
                     return 1;
                 }
                 backup::MirrorOptions o;
                 o.src = *src;
                 o.dst = *dst;
+                if (filter_json || filter_file) {
+                    std::string filter_error;
+                    auto filter =
+                        load_filter(filter_json, filter_file, filter_error);
+                    if (!filter) {
+                        std::cerr << "筛选规则无效：" << filter_error << "\n";
+                        return 1;
+                    }
+                    o.filter = *filter;
+                }
+                o.keep_metadata = !no_metadata;
+
                 const backup::MirrorResult r = backup::mirror_directory(o);
                 std::cout << "完成：" << r.files_copied << " 个文件，"
                           << r.bytes_copied << " 字节。\n";
+                if (r.entries_filtered > 0) {
+                    std::cout << "筛选排除 " << r.entries_filtered
+                              << " 个文件。\n";
+                }
                 if (r.files_skipped > 0) {
                     std::cout << "跳过 " << r.files_skipped
                               << " 个（已存在）。\n";
+                }
+                if (o.keep_metadata) {
+                    std::cout << "已写入 .backup-manifest.json（含元数据）。\n";
                 }
             }
             return 0;
@@ -407,8 +423,8 @@ int main(int argc, char** argv) {
                    "      --no-metadata  不还原 v4 归档中的元数据\n";
             return 1;
         }
-        if (!archive && (password || no_metadata)) {
-            std::cerr << "--password / --no-metadata 只在解包归档时使用。\n";
+        if (!archive && password) {
+            std::cerr << "--password 只在解包加密归档时使用。\n";
             return 1;
         }
 
@@ -423,12 +439,17 @@ int main(int argc, char** argv) {
                 std::cout << "解包完成：" << r.entries_read << " 个文件，"
                           << r.bytes_read << " 字节。\n";
             } else {
-                backup::MirrorOptions o;
+                backup::MirrorRestoreOptions o;
                 o.src = *src;
                 o.dst = *dst;
-                const backup::MirrorResult r = backup::mirror_directory(o);
+                o.restore_metadata = !no_metadata;
+                const backup::MirrorResult r = backup::restore_mirror(o);
                 std::cout << "还原完成：" << r.files_copied << " 个文件，"
                           << r.bytes_copied << " 字节。\n";
+                if (r.files_skipped > 0) {
+                    std::cout << "跳过 " << r.files_skipped
+                              << " 个（已存在）。\n";
+                }
             }
             return 0;
         } catch (const std::exception& e) {
