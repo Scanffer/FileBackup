@@ -300,7 +300,10 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     min-width: 0;
   }
 
-  input[type="text"] {
+  /* 密码框和文本路径框共用同一套外观：高度、等宽字体、深色控件底。
+     type=password 也要列进来，否则密码框会是浏览器默认的浅色样式。 */
+  input[type="text"],
+  input[type="password"] {
     width: 100%;
     height: 2rem;
     padding: 0 .625rem;
@@ -313,14 +316,17 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   }
 
   /* 占位文字是给人看的说明，不是路径，所以用正文字体。 */
-  input[type="text"]::placeholder {
+  input[type="text"]::placeholder,
+  input[type="password"]::placeholder {
     color: #989898;
     font-family: var(--sans);
   }
 
-  input[type="text"]:hover { border-color: #4D4D4D; }
+  input[type="text"]:hover,
+  input[type="password"]:hover { border-color: #4D4D4D; }
 
-  input[type="text"]:focus-visible {
+  input[type="text"]:focus-visible,
+  input[type="password"]:focus-visible {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft);
@@ -426,16 +432,317 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
 
   .check { min-height: 2rem; }
 
+  /* ---- 次级按钮：密码显示/隐藏、填入示例、复制路径 ------------------- */
+
+  .btn-secondary {
+    flex: 0 0 auto;
+    height: 2rem;
+    padding: 0 .875rem;
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .25rem;
+    font-family: inherit;
+    font-size: .8125rem;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .btn-secondary:hover { background: #3A3A3A; border-color: #4D4D4D; }
+  .btn-secondary:active { background: #444444; }
+
+  .btn-secondary:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .btn-secondary:disabled { opacity: .55; cursor: default; }
+
+  /* ---- 多行文本：六维筛选规则（JSON） --------------------------------- */
+
+  textarea {
+    width: 100%;
+    /* 10rem 正好放得下占位里的六维示例，不用滚动就能看全。 */
+    min-height: 10rem;
+    padding: .45rem .625rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .25rem;
+    resize: vertical;
+    color-scheme: dark;
+    tab-size: 2;
+  }
+
+  textarea::placeholder { color: #888888; }
+  textarea:hover:not(:disabled) { border-color: #4D4D4D; }
+
+  textarea:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  textarea:disabled { opacity: .6; }
+
+  .filter-line {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-line .hint { flex: 1 1 auto; min-width: 0; }
+
+  .filter-status { color: var(--ink-3); }
+  .filter-status.is-ok { color: #7EE787; }
+  .filter-status.is-err { color: var(--err); }
+
+  /* fieldset 只用来「一键禁用整张表单」，视觉上必须完全隐形。 */
+  .fields {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .fields:disabled .lbl { color: #6E7681; }
+  .fields:disabled .hint { opacity: .7; }
+
+  /* 原生 disabled 控件在深色主题下几乎看不出变化，给整个表单加一点
+     统一的不透明度，让「正在跑、别动」一眼可见。 */
+  .fields:disabled input,
+  .fields:disabled select,
+  .fields:disabled textarea,
+  .fields:disabled button { opacity: .55; }
+
+  .tab:disabled,
+  .tab:disabled:hover {
+    color: #6E7681;
+    background: none;
+    cursor: default;
+  }
+
+  /* ---- 任务列表 / 结果面板 -------------------------------------------- */
+
+  .panel {
+    margin-top: 1.25rem;
+    padding: .75rem .875rem;
+    background: #232323;
+    border: 1px solid var(--border-strong);
+    border-radius: .375rem;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+    margin-bottom: .5rem;
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: .8125rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .link-btn {
+    appearance: none;
+    margin-left: auto;
+    padding: .1rem .25rem;
+    background: none;
+    border: 0;
+    border-radius: .2rem;
+    font-family: inherit;
+    font-size: .75rem;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .link-btn:hover { text-decoration: underline; }
+
+  .link-btn:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .result-state {
+    padding: .05rem .4rem;
+    border-radius: .6rem;
+    font-size: .6875rem;
+    color: var(--ink-3);
+    background: #2D2D2D;
+  }
+
+  .result-state.is-ok { color: #7EE787; background: rgba(46, 160, 67, .16); }
+  .result-state.is-err { color: #FF7B72; background: rgba(248, 81, 73, .16); }
+
+  .result-detail {
+    margin: 0;
+    font-size: .8125rem;
+    color: var(--ink-2);
+  }
+
+  .result-error {
+    margin: .35rem 0 0;
+    font-size: .8125rem;
+    color: var(--err);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .result-path-line {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+    margin: .55rem 0 0;
+  }
+
+  .result-path-label {
+    flex: 0 0 auto;
+    font-size: .75rem;
+    color: var(--ink-3);
+  }
+
+  .result-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: .3rem .45rem;
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .25rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .task-item {
+    padding: .4rem .5rem .45rem;
+    background: #252526;
+    border: 1px solid var(--border);
+    border-radius: .3rem;
+  }
+
+  .task-top {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+  }
+
+  .task-kind { font-size: .75rem; color: var(--ink-2); }
+
+  .task-badge {
+    padding: .02rem .38rem;
+    border-radius: .55rem;
+    font-size: .6875rem;
+    color: var(--ink-3);
+    background: #2D2D2D;
+    white-space: nowrap;
+  }
+
+  .task-item[data-state="running"] .task-badge {
+    color: #E3B341;
+    background: rgba(204, 167, 0, .16);
+  }
+
+  .task-item[data-state="success"] .task-badge {
+    color: #7EE787;
+    background: rgba(46, 160, 67, .16);
+  }
+
+  .task-item[data-state="failed"] .task-badge {
+    color: #FF7B72;
+    background: rgba(248, 81, 73, .16);
+  }
+
+  .task-pct {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: .6875rem;
+    color: var(--ink-3);
+  }
+
+  .task-mini {
+    height: 3px;
+    margin: .32rem 0 .28rem;
+    overflow: hidden;
+    background: #2B2B2B;
+    border-radius: 2px;
+  }
+
+  .task-mini > i {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--busy);
+    transition: width .2s ease;
+  }
+
+  .task-item[data-state="success"] .task-mini > i { background: var(--ok); }
+  .task-item[data-state="failed"] .task-mini > i { background: var(--err); }
+
+  .task-msg {
+    margin: 0;
+    overflow: hidden;
+    font-size: .75rem;
+    color: var(--ink-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* ---- 底部状态栏：左边是这次操作的结果，右边是唯一的主动作 ---------- */
 
   .statusbar {
     flex: 0 0 auto;
     display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+    background: var(--bar);
+  }
+
+  /* 运行中在状态栏顶部画一条细进度条；[hidden] 会把它整条藏掉。 */
+  .statusbar-progress {
+    flex: 0 0 auto;
+    height: 3px;
+    overflow: hidden;
+    background: #2B2B2B;
+  }
+
+  .statusbar-progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--accent);
+    transition: width .2s ease;
+  }
+
+  .statusbar.is-busy .statusbar-progress-fill { background: var(--busy); }
+  .statusbar.is-ok   .statusbar-progress-fill { background: var(--ok); }
+  .statusbar.is-err  .statusbar-progress-fill { background: var(--err); }
+
+  .statusbar-row {
+    display: flex;
     align-items: center;
     gap: .5rem;
     padding: .625rem var(--gutter);
-    border-top: 1px solid var(--border);
-    background: var(--bar);
   }
 
   .lamp {
@@ -517,6 +824,10 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     }
 
     main { padding-top: 1rem; }
+
+    /* 窄窗口下路径和「复制路径」放不下同一行，折成两行。 */
+    .result-path-line { flex-wrap: wrap; }
+    .result-copy { margin-left: auto; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -581,6 +892,9 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
 <form id="form" novalidate>
   <main>
     <div class="form">
+      <!-- 运行中把整个 fieldset 置 disabled，一次禁用所有字段控件；
+           比逐个记「原来是否禁用」可靠，也天然覆盖以后新增的控件。 -->
+      <fieldset class="fields" id="fields">
 
       <div class="row" id="row-kind" hidden>
         <span class="lbl">还原来源</span>
@@ -649,13 +963,96 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
         </div>
       </div>
 
+      <div class="row" id="row-encrypt" hidden>
+        <span class="lbl">加密方式</span>
+        <div class="control">
+          <div class="compress-line">
+            <select id="encrypt" aria-label="加密算法"></select>
+          </div>
+          <p class="hint" id="encrypt-hint">
+            仅单容器 .vbak 支持加密；勾选上方「打包」后启用。
+          </p>
+        </div>
+      </div>
+
+      <div class="row" id="row-password" hidden>
+        <label class="lbl" for="password">密码</label>
+        <div class="control">
+          <div class="field-line">
+            <input type="password" id="password" autocomplete="new-password"
+                   spellcheck="false" placeholder="加密密码（不会写入归档）">
+            <button type="button" class="btn-secondary" id="password-toggle"
+                    aria-pressed="false" title="显示 / 隐藏密码">显示</button>
+          </div>
+          <p class="hint" id="password-hint"></p>
+        </div>
+      </div>
+
+      <div class="row" id="row-metadata">
+        <span class="lbl">元数据</span>
+        <div class="control">
+          <label class="check">
+            <input type="checkbox" id="metadata" checked>
+            <span>保存 / 还原元数据（时间戳、Windows 属性等）</span>
+          </label>
+          <p class="hint" id="metadata-hint"></p>
+        </div>
+      </div>
+
+      <div class="row" id="row-filter" hidden>
+        <span class="lbl">筛选规则</span>
+        <div class="control">
+          <textarea id="filter" spellcheck="false"
+                    aria-label="筛选规则 JSON"></textarea>
+          <div class="filter-line">
+            <button type="button" class="btn-secondary" id="filter-example">
+              填入示例
+            </button>
+            <p class="hint filter-status" id="filter-status"
+               role="status" aria-live="polite"></p>
+          </div>
+          <p class="hint" id="filter-hint"></p>
+        </div>
+      </div>
+
+      </fieldset>
+
+      <section class="panel" id="result-panel" hidden aria-live="polite">
+        <div class="panel-head">
+          <h2 class="panel-title" id="result-title">操作结果</h2>
+          <span class="result-state" id="result-state"></span>
+        </div>
+        <p class="result-detail" id="result-detail" hidden></p>
+        <p class="result-error" id="result-error" hidden></p>
+        <div class="result-path-line" id="result-path-line" hidden>
+          <span class="result-path-label">目标路径</span>
+          <code class="result-path" id="result-path"></code>
+          <button type="button" class="btn-secondary result-copy"
+                  id="result-copy">复制路径</button>
+        </div>
+      </section>
+
+      <section class="panel" id="tasks-panel" hidden aria-label="最近任务">
+        <div class="panel-head">
+          <h2 class="panel-title">最近任务</h2>
+          <button type="button" class="link-btn" id="tasks-refresh">刷新</button>
+        </div>
+        <ul class="task-list" id="task-list"></ul>
+      </section>
+
     </div>
   </main>
 
   <div class="statusbar" id="statusbar">
-    <span class="lamp" aria-hidden="true"></span>
-    <p class="status-text" id="status-text" role="status" aria-live="polite"></p>
-    <button type="submit" class="primary" id="go">开始备份</button>
+    <div class="statusbar-progress" id="run-progress" hidden>
+      <div class="statusbar-progress-fill" id="run-progress-fill"></div>
+    </div>
+    <div class="statusbar-row">
+      <span class="lamp" aria-hidden="true"></span>
+      <p class="status-text" id="status-text" role="status"
+         aria-live="polite"></p>
+      <button type="submit" class="primary" id="go">开始备份</button>
+    </div>
   </div>
 </form>
 
@@ -681,17 +1078,33 @@ function postWindowCommand(command) {
   if (hasNativeChrome) webviewHost.postMessage(command);
 }
 
-// ---- 压缩算法下拉框 ------------------------------------------------------
-// 清单从 /api/algorithms 拉取；只展示 available=true 的算法。拉不到时用
-// 一个最小兜底清单，页面仍然可用。
-let compressAlgorithms = [
-  { id: "none", label: "不压缩", has_level: false, self_made: false },
-  { id: "deflate", label: "DEFLATE", has_level: true, self_made: true },
+// ---- 算法清单 / 筛选规则校验 ---------------------------------------------
+// 压缩、加密清单都从 /api/algorithms 拉取；只展示 available != false 的算法。
+// 接口不可用时用本地兜底清单，页面仍然可用（只是加密选项可能不完整）。
+const FALLBACK_COMPRESS = [
+  { id: "none", label: "不压缩", has_level: false, self_made: false, available: true },
+  { id: "deflate", label: "DEFLATE", has_level: true, self_made: true, available: true },
 ];
+const FALLBACK_ENCRYPT = [
+  { id: "none", label: "不加密", self_made: false, available: true },
+  { id: "aes256cbc", label: "AES-256-CBC", self_made: true, available: true },
+  { id: "chacha20poly1305", label: "ChaCha20-Poly1305", self_made: true, available: true },
+  { id: "rc4", label: "RC4", self_made: true, available: true },
+];
+
+let compressAlgorithms = FALLBACK_COMPRESS.slice();
+let encryptAlgorithms = FALLBACK_ENCRYPT.slice();
+
+function findAlgorithm(list, id) {
+  for (const algo of list) {
+    if (algo.id === id) return algo;
+  }
+  return null;
+}
 
 function currentCompressionInfo() {
   return (
-    compressAlgorithms.find((algo) => algo.id === state.compression) || {
+    findAlgorithm(compressAlgorithms, state.compression) || {
       id: "none",
       label: "不压缩",
       has_level: false,
@@ -700,22 +1113,38 @@ function currentCompressionInfo() {
   );
 }
 
-/// 各压缩算法支持的级别范围。当前自研 DEFLATE 是 1–9；
-/// 以后接入 zstd 时是 1–19。级别不是"压缩几次"，而是搜索力度：
-/// 越高越慢，通常文件越小。
+function currentEncryptionInfo() {
+  return (
+    findAlgorithm(encryptAlgorithms, state.encryption) || {
+      id: "none",
+      label: "不加密",
+      self_made: false,
+    }
+  );
+}
+
+/// 各压缩算法支持的级别范围。优先用后端给的 level_min/level_max，
+/// 老接口没有这两个字段时按算法 ID 回退（DEFLATE 1–9、zstd 1–19）。
+/// 级别不是"压缩几次"，而是搜索力度：越高越慢，通常文件越小。
 function compressionLevelRange(info) {
-  if (info.id === "deflate") return [1, 9];
-  if (info.id === "zstd") return [1, 19];
+  const min = Number(info && info.level_min);
+  const max = Number(info && info.level_max);
+  if (Number.isFinite(min) && Number.isFinite(max) && min >= 1 && max >= min) {
+    return [min, max];
+  }
+  if (info && info.id === "deflate") return [1, 9];
+  if (info && info.id === "zstd") return [1, 19];
   return [1, 1];
 }
 
 function syncCompressionControls() {
   const info = currentCompressionInfo();
-  const enabled = state.pack;
+  const enabled = state.mode === "backup" && state.pack && !state.busy;
   $("compress").disabled = !enabled;
   const level = $("level");
-  level.disabled = !enabled || !info.has_level;
-  level.title = info.has_level ? "压缩级别" : "该算法没有压缩级别";
+  const hasLevel = info.has_level === true;
+  level.disabled = !enabled || !hasLevel;
+  level.title = hasLevel ? "压缩级别" : "该算法没有压缩级别";
 
   const [minLevel, maxLevel] = compressionLevelRange(info);
   level.min = String(minLevel);
@@ -726,6 +1155,21 @@ function syncCompressionControls() {
   } else {
     level.value = String(Math.min(maxLevel, Math.max(minLevel, value)));
   }
+
+  // 提示文字直接写出当前算法的级别范围，用户不用去猜。
+  const hint = $("compress-hint");
+  if (state.mode !== "backup") {
+    hint.textContent = "";
+  } else if (!state.pack) {
+    hint.textContent =
+      "仅勾选「打包为单个 .vbak 归档文件」时生效；目录镜像模式按原样复制文件。";
+  } else if (!hasLevel) {
+    hint.textContent = (info.label || info.id) + " 没有压缩级别参数。";
+  } else {
+    hint.textContent =
+      "级别范围 " + minLevel + "–" + maxLevel +
+      "；级别越高越慢、压缩率通常越好。";
+  }
 }
 
 function fillCompressionOptions() {
@@ -734,7 +1178,7 @@ function fillCompressionOptions() {
   for (const algo of compressAlgorithms) {
     const option = document.createElement("option");
     option.value = algo.id;
-    let label = algo.label;
+    let label = algo.label || algo.id;
     if (algo.self_made) label += "（自研）";
     else if (algo.id !== "none") label += "（库）";
     option.textContent = label;
@@ -752,28 +1196,224 @@ function fillCompressionOptions() {
   syncCompressionControls();
 }
 
+function fillEncryptionOptions() {
+  const select = $("encrypt");
+  select.innerHTML = "";
+  for (const algo of encryptAlgorithms) {
+    const option = document.createElement("option");
+    option.value = algo.id;
+    let label = algo.label || algo.id;
+    if (algo.self_made) label += "（自研）";
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  if (!encryptAlgorithms.some((algo) => algo.id === state.encryption)) {
+    state.encryption = "none";
+  }
+  select.value = state.encryption;
+  syncEncryptionControls();
+}
+
+/// 加密方式与密码的可用性：只有「备份 + 打包 vbak」能选加密算法；
+/// 还原归档时也需要密码（归档是否加密由后端判断，留空也能提交）。
+function syncEncryptionControls() {
+  const info = currentEncryptionInfo();
+  const encryptEnabled = state.mode === "backup" && state.pack && !state.busy;
+  const select = $("encrypt");
+  select.disabled = !encryptEnabled;
+  if (encryptEnabled && findAlgorithm(encryptAlgorithms, state.encryption)) {
+    select.value = state.encryption;
+  }
+
+  const passwordEnabled = !state.busy && (
+    (state.mode === "backup" && state.pack && state.encryption !== "none") ||
+    (state.mode === "restore" && state.kind === "archive")
+  );
+  $("password").disabled = !passwordEnabled;
+  $("password-toggle").disabled = !passwordEnabled;
+
+  let encryptHint;
+  if (!state.pack) {
+    encryptHint = "仅单容器 .vbak 支持加密；勾选上方「打包」后启用。";
+  } else if (state.encryption === "none") {
+    encryptHint = "不加密：归档内容以明文保存。";
+  } else {
+    const label = info.label || state.encryption;
+    encryptHint = label + (info.self_made ? "（自研）" : "") +
+      "；需要设置密码，密码不会写入归档。";
+    if (info.note) encryptHint += " " + info.note;
+  }
+  $("encrypt-hint").textContent = encryptHint;
+  $("password-hint").textContent = state.mode === "backup"
+    ? "加密密码；归档中不保存密码，还原时需要再次输入。"
+    : "加密归档需要密码；未加密的归档可以留空。";
+}
+
 async function loadAlgorithms() {
   try {
     const resp = await fetch("/api/algorithms");
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const data = await resp.json();
-    const list = (data.compress || []).filter(
+    const compress = (data.compress || []).filter(
       (algo) => algo.available !== false
     );
-    if (list.length > 0) compressAlgorithms = list;
+    if (compress.length > 0) {
+      compressAlgorithms = compress.some((algo) => algo.id === "none")
+        ? compress
+        : [{ id: "none", label: "不压缩", has_level: false, self_made: false }]
+            .concat(compress);
+    }
+    const encrypt = (data.encrypt || []).filter(
+      (algo) => algo.available !== false
+    );
+    if (encrypt.length > 0) {
+      encryptAlgorithms = encrypt.some((algo) => algo.id === "none")
+        ? encrypt
+        : [{ id: "none", label: "不加密", self_made: false }].concat(encrypt);
+    }
   } catch (err) {
     // 后端异常时保留兜底清单，不阻塞界面。
   }
   fillCompressionOptions();
+  fillEncryptionOptions();
+  if (!state.busy) render();
 }
 
-// mode: backup | restore；kind: archive | mirror（仅还原时有效）；pack：是否打包
+// ---- 六维筛选规则：JSON 文本域 + 实时校验 --------------------------------
+// 规则格式见 core/filter.h：JSON 数组，每条规则可含
+// path / type / name / time / size / user 六个维度，action 为 include 或
+// exclude。前端只做结构校验（后端还会再校验一遍）。
+const FILTER_DIMENSIONS = ["path", "type", "name", "time", "size", "user"];
+
+const FILTER_EXAMPLE = [
+  "[",
+  '  {"action": "include", "path": "docs/**", "name": "*.pdf"},',
+  '  {"action": "exclude", "type": "tmp,bak"},',
+  '  {"action": "include", "size": ">= 1KB"},',
+  '  {"action": "exclude", "time": "before 2020-01-01"},',
+  '  {"action": "include", "user": "owner:alice"}',
+  "]",
+].join("\n");
+
+function validateFilterText(text) {
+  const trimmed = String(text == null ? "" : text).trim();
+  if (!trimmed) {
+    return {
+      ok: true,
+      empty: true,
+      rules: null,
+      message: "留空表示不筛选（包含全部文件）。",
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (err) {
+    return {
+      ok: false,
+      empty: false,
+      rules: null,
+      message: "JSON 语法错误：" +
+        (err && err.message ? err.message : "无法解析"),
+    };
+  }
+  if (!Array.isArray(parsed)) {
+    return {
+      ok: false,
+      empty: false,
+      rules: null,
+      message: "规则必须是 JSON 数组，例如 [ {...} ]。",
+    };
+  }
+  if (parsed.length === 0) {
+    return { ok: true, empty: true, rules: [], message: "空数组 = 不筛选。" };
+  }
+
+  let includes = 0;
+  let excludes = 0;
+  for (let i = 0; i < parsed.length; i += 1) {
+    const rule = parsed[i];
+    const label = "第 " + (i + 1) + " 条规则";
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
+      return {
+        ok: false,
+        empty: false,
+        rules: null,
+        message: label + "必须是对象。",
+      };
+    }
+    if (rule.action !== undefined && rule.action !== "include" &&
+        rule.action !== "exclude") {
+      return {
+        ok: false,
+        empty: false,
+        rules: null,
+        message: label + "的 action 只能是 include 或 exclude。",
+      };
+    }
+    const unknown = Object.keys(rule).filter(
+      (key) => key !== "action" && FILTER_DIMENSIONS.indexOf(key) < 0
+    );
+    if (unknown.length > 0) {
+      return {
+        ok: false,
+        empty: false,
+        rules: null,
+        message: label + "含有未知维度：" + unknown.join("、") +
+          "（可用：" + FILTER_DIMENSIONS.join(" / ") + "）。",
+      };
+    }
+    if (!FILTER_DIMENSIONS.some((dim) => rule[dim] !== undefined)) {
+      return {
+        ok: false,
+        empty: false,
+        rules: null,
+        message: label + "至少要写一个维度：" +
+          FILTER_DIMENSIONS.join(" / ") + "。",
+      };
+    }
+    if (rule.action === "exclude") excludes += 1;
+    else includes += 1;
+  }
+
+  return {
+    ok: true,
+    empty: false,
+    rules: parsed,
+    message: "规则合法：" + parsed.length + " 条（include " + includes +
+      "，exclude " + excludes + "）。",
+  };
+}
+
+function updateFilterStatus() {
+  const result = validateFilterText($("filter").value);
+  const status = $("filter-status");
+  status.className = "hint filter-status" +
+    (result.ok ? (result.empty ? "" : " is-ok") : " is-err");
+  status.textContent = result.message;
+  return result;
+}
+
+// mode: backup | restore；kind: archive | mirror（仅还原时有效）；pack：是否打包；
+// encryption：加密算法；metadata：是否保存/还原元数据；busy：是否有任务在跑。
 const state = {
   mode: "backup",
   kind: "archive",
   pack: false,
   compression: "deflate",
-  level: 6,
+  encryption: "none",
+  metadata: true,
+  busy: false,
+  currentVerb: "",
+  currentTarget: "",
+  currentTaskId: null,
+  tasks: [],
+  sse: null,
+  sseWatchdog: 0,
+  pollTimer: 0,
+  pollFailures: 0,
+  lastProgressSign: "",
 };
 
 // 当前状态下界面上的每个词都从这里取，避免同一个动作在标签、按钮和状态栏
@@ -797,6 +1437,10 @@ function describe() {
       kindHidden: true,
       packHidden: false,
       compressHidden: false,
+      encryptHidden: false,
+      // 密码行只在「选了加密算法」时出现；镜像模式没有加密，藏起来。
+      passwordHidden: !(pack && state.encryption !== "none"),
+      filterHidden: false,
     };
   }
 
@@ -815,6 +1459,10 @@ function describe() {
     kindHidden: false,
     packHidden: true,
     compressHidden: true,
+    encryptHidden: true,
+    // 还原归档需要密码输入；从备份目录还原（镜像）不需要。
+    passwordHidden: state.kind !== "archive",
+    filterHidden: true,
   };
 }
 
@@ -824,7 +1472,44 @@ function setStatus(kind, text) {
   $("status-text").textContent = text;
 }
 
-function render() {
+function syncMetadataHint() {
+  if (state.mode === "backup") {
+    $("metadata-hint").textContent = state.pack
+      ? "把时间戳、Windows 属性等元数据写入 v4 归档；关闭后只备份文件内容。"
+      : "把时间戳、Windows 属性等元数据写入 .backup-manifest.json；" +
+        "关闭后只复制文件内容。";
+  } else if (state.kind === "archive") {
+    $("metadata-hint").textContent =
+      "还原归档中保存的元数据（时间戳、属性等）；关闭后只写文件内容。";
+  } else {
+    $("metadata-hint").textContent =
+      "读取备份目录中的 .backup-manifest.json 还原元数据；关闭后只写文件内容。";
+  }
+}
+
+/// 筛选规则区：备份的两种模式都支持筛选（镜像模式写 .backup-manifest.json），
+/// 只有还原模式不适用，整行隐藏。
+function syncFilterHint() {
+  const textarea = $("filter");
+  const filterEnabled = state.mode === "backup" && !state.busy;
+  textarea.disabled = !filterEnabled;
+  $("filter-example").disabled = !filterEnabled;
+  const hint = $("filter-hint");
+  if (state.mode !== "backup") {
+    hint.textContent = "";
+  } else if (!state.pack) {
+    hint.textContent =
+      "镜像模式同样应用筛选：被排除的条目不复制，规则与元数据一起写入" +
+      " .backup-manifest.json。";
+  } else {
+    hint.textContent =
+      "JSON 数组；同一条规则内的多个维度是「且」，同一维度内逗号分隔是" +
+      "「或」；include 为空时默认全选，命中 exclude 优先排除。";
+  }
+  updateFilterStatus();
+}
+
+function render(keepStatus) {
   const d = describe();
 
   for (const tab of document.querySelectorAll(".tab")) {
@@ -837,10 +1522,16 @@ function render() {
   $("row-kind").hidden = d.kindHidden;
   $("row-pack").hidden = d.packHidden;
   $("row-compress").hidden = d.compressHidden;
-  $("compress-hint").textContent = state.pack
-    ? "级别越高越慢、压缩率通常越好。"
-    : "仅勾选「打包为单个 .vbak 归档文件」时生效；目录镜像模式按原样复制文件。";
+  $("row-encrypt").hidden = d.encryptHidden;
+  $("row-password").hidden = d.passwordHidden;
+  $("row-filter").hidden = d.filterHidden;
+
+  $("metadata").checked = state.metadata;
+
   syncCompressionControls();
+  syncEncryptionControls();
+  syncMetadataHint();
+  syncFilterHint();
 
   $("src-label").textContent = d.srcLabel;
   $("dst-label").textContent = d.dstLabel;
@@ -848,15 +1539,20 @@ function render() {
   $("dst").placeholder = d.dstPlaceholder;
   $("src-hint").textContent = d.srcHint;
   $("dst-hint").textContent = d.dstHint;
-  $("go").textContent = "开始" + d.verb;
+
+  $("go").textContent = state.busy
+    ? "正在" + (state.currentVerb || d.verb) + "…"
+    : "开始" + d.verb;
+  $("go").disabled = state.busy;
 
   // 换模式或选项就把上一次的结果收起来，换回「接下来会发生什么」，
-  // 免得上一轮的「完成」被误读成本轮的。
-  setStatus("", d.note);
+  // 免得上一轮的「完成」被误读成本轮的。任务运行中不动状态栏。
+  if (!keepStatus) setStatus("", d.note);
 }
 
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
+    if (state.busy) return;
     state.mode = tab.dataset.mode;
     render();
   });
@@ -864,13 +1560,14 @@ for (const tab of document.querySelectorAll(".tab")) {
 
 for (const radio of document.querySelectorAll('input[name="kind"]')) {
   radio.addEventListener("change", () => {
-    if (!radio.checked) return;
+    if (!radio.checked || state.busy) return;
     state.kind = radio.value;
     render();
   });
 }
 
 $("pack").addEventListener("change", (e) => {
+  if (state.busy) return;
   state.pack = e.target.checked;
   render();
 });
@@ -880,9 +1577,36 @@ $("compress").addEventListener("change", (e) => {
   syncCompressionControls();
 });
 
-$("level").addEventListener("input", (e) => {
-  const value = Number.parseInt(e.target.value, 10);
-  if (!Number.isNaN(value)) state.level = value;
+$("encrypt").addEventListener("change", (e) => {
+  state.encryption = e.target.value;
+  render();
+});
+
+$("metadata").addEventListener("change", (e) => {
+  state.metadata = e.target.checked;
+  render();
+});
+
+// 密码显示/隐藏：把 input 的 type 在 password / text 之间切换。
+$("password-toggle").addEventListener("click", () => {
+  const input = $("password");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  $("password-toggle").textContent = show ? "隐藏" : "显示";
+  $("password-toggle").setAttribute("aria-pressed", String(show));
+});
+
+$("filter").addEventListener("input", updateFilterStatus);
+
+$("filter-example").addEventListener("click", () => {
+  const textarea = $("filter");
+  if (textarea.value.trim() &&
+      !window.confirm("用示例覆盖当前的筛选规则？")) {
+    return;
+  }
+  textarea.value = FILTER_EXAMPLE;
+  updateFilterStatus();
+  textarea.focus();
 });
 
 // ---- 窗口按钮与标题栏拖拽（仅 WebView2 宿主模式）------------------------
@@ -966,8 +1690,619 @@ if (hasNativeChrome) {
   });
 }
 
+// ---- 异步任务：SSE 订阅 + 轮询降级 --------------------------------------
+//
+// 提交后后端立刻返回 task_id，任务在后台线程里跑；页面用 EventSource 订阅
+// /api/tasks/{id}/stream 拿进度。EventSource 不可用、或长时间没有 data
+// 事件时，退回 GET /api/tasks/{id} 轮询。两种来源最终都走 applyTask。
+
+function normalizeState(rawState) {
+  const raw = String(rawState == null ? "" : rawState).trim().toLowerCase();
+  if (!raw) return "";
+  if (["success", "succeeded", "ok", "done", "complete", "completed",
+       "finished"].indexOf(raw) >= 0) {
+    return "success";
+  }
+  if (["failed", "failure", "error", "cancelled", "canceled", "aborted",
+       "timeout"].indexOf(raw) >= 0) {
+    return "failed";
+  }
+  if (["running", "in_progress", "in-progress", "working", "processing",
+       "active", "started"].indexOf(raw) >= 0) {
+    return "running";
+  }
+  if (["queued", "pending", "waiting", "created", "new"].indexOf(raw) >= 0) {
+    return "queued";
+  }
+  if (raw === "progress" || raw === "update") return "running";
+  return raw;
+}
+
+function textOf(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+/// error 字段可能是字符串，也可能是 {code,message} 对象。
+function errorText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const message = textOf(value.message) || textOf(value.error) ||
+      textOf(value.code);
+    if (message) return message;
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      return "";
+    }
+  }
+  return String(value);
+}
+
+function findTask(id) {
+  for (const task of state.tasks) {
+    if (task.id === id) return task;
+  }
+  return null;
+}
+
+function upsertTask(task) {
+  if (!task || !task.id) return;
+  for (let i = 0; i < state.tasks.length; i += 1) {
+    if (state.tasks[i].id === task.id) {
+      const merged = {};
+      for (const key of Object.keys(state.tasks[i])) {
+        merged[key] = state.tasks[i][key];
+      }
+      for (const key of Object.keys(task)) merged[key] = task[key];
+      state.tasks[i] = merged;
+      return;
+    }
+  }
+  state.tasks.unshift(task);
+  if (state.tasks.length > 20) state.tasks.length = 20;
+}
+
+/// 把后端返回的任意任务 JSON 归一成界面用的结构，兼容：
+/// id/task_id、state/status/type、progress 0–100 或 0–1、
+/// message/stage/detail、error 字符串或对象、result 对象或字符串。
+function normalizeTask(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const src = raw.task && typeof raw.task === "object" ? raw.task : raw;
+  const request = src.request && typeof src.request === "object"
+    ? src.request
+    : {};
+
+  let stateName = normalizeState(
+    src.state != null ? src.state : (src.status != null ? src.status : src.type)
+  );
+  if (!stateName && src.done === true) stateName = "success";
+  if (!stateName) stateName = src.error ? "failed" : "queued";
+
+  const id = textOf(src.id != null ? src.id : src.task_id);
+  if (!id) return null;
+
+  let progress = Number(src.progress != null ? src.progress : src.percent);
+  if (!Number.isFinite(progress)) {
+    progress = Number.parseFloat(
+      String(src.progress != null ? src.progress : "").replace("%", "")
+    );
+  }
+  if (!Number.isFinite(progress) || progress < 0) progress = 0;
+  if (progress > 100) progress = 100;
+  if (stateName === "success") {
+    progress = 100;
+  } else if (progress > 0 && progress < 1) {
+    progress = progress * 100;
+  }
+  progress = Math.round(progress);
+
+  const known = findTask(id);
+  const message = textOf(src.message) || textOf(src.stage) ||
+    textOf(src.detail) || textOf(src.text);
+
+  return {
+    id: id,
+    kind: textOf(src.kind) || (known ? known.kind : ""),
+    state: stateName,
+    terminal: stateName === "success" || stateName === "failed",
+    progress: progress,
+    message: message,
+    error: errorText(src.error),
+    result: src.result != null
+      ? src.result
+      : (src.results != null ? src.results : null),
+    target: textOf(src.target) || textOf(src.dst) ||
+      textOf(request.dst) || (known ? known.target : ""),
+    createdAt: src.created_at != null
+      ? src.created_at
+      : (src.createdAt != null
+          ? src.createdAt
+          : (known ? known.createdAt : null)),
+  };
+}
+
+function kindLabel(kind) {
+  const raw = String(kind || "").toLowerCase();
+  if (raw.indexOf("restore") >= 0 || raw.indexOf("unpack") >= 0) return "还原";
+  if (raw.indexOf("backup") >= 0 || raw.indexOf("pack") >= 0) return "备份";
+  return "任务";
+}
+
+function taskStateLabel(taskState) {
+  if (taskState === "success") return "成功";
+  if (taskState === "failed") return "失败";
+  if (taskState === "running") return "进行中";
+  return "排队中";
+}
+
+function formatBytes(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return String(value);
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = num;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return (unit === 0 ? String(size) : size.toFixed(1)) + " " + units[unit];
+}
+
+function firstNumber(obj, keys) {
+  for (const key of keys) {
+    if (obj[key] == null) continue;
+    const num = Number(obj[key]);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+}
+
+/// 成功结果：把 entries / bytes 显示成人话；后端加字段时也兼容。
+function taskResultText(task) {
+  const result = task && task.result;
+  if (result == null) return "";
+  if (typeof result === "string") return result;
+  if (typeof result === "number") return String(result);
+  if (typeof result !== "object") return "";
+
+  const entries = firstNumber(result, [
+    "entries", "entries_written", "files", "files_written", "count", "items",
+  ]);
+  const bytes = firstNumber(result, [
+    "bytes", "bytes_written", "total_bytes", "size", "bytes_read",
+  ]);
+  const parts = [];
+  if (entries != null) {
+    parts.push(entries.toLocaleString("zh-CN") + " 个文件");
+  }
+  if (bytes != null) {
+    parts.push(formatBytes(bytes) + "（" +
+      bytes.toLocaleString("zh-CN") + " 字节）");
+  }
+  const skipped = firstNumber(result, ["skipped", "files_skipped"]);
+  if (skipped != null && skipped > 0) parts.push("跳过 " + skipped + " 项");
+  const filtered = firstNumber(result, ["filtered", "entries_filtered"]);
+  if (filtered != null && filtered > 0) {
+    parts.push("筛选排除 " + filtered + " 项");
+  }
+  if (parts.length > 0) return parts.join("，") + "。";
+
+  return textOf(result.message) || textOf(result.detail);
+}
+
+function renderTasks() {
+  const panel = $("tasks-panel");
+  const list = $("task-list");
+  const items = state.tasks.slice(0, 8);
+  list.textContent = "";
+  panel.hidden = items.length === 0;
+
+  for (const task of items) {
+    const item = document.createElement("li");
+    item.className = "task-item";
+    item.dataset.state = task.state;
+
+    const top = document.createElement("div");
+    top.className = "task-top";
+
+    const kind = document.createElement("span");
+    kind.className = "task-kind";
+    kind.textContent = kindLabel(task.kind);
+
+    const badge = document.createElement("span");
+    badge.className = "task-badge";
+    badge.textContent = taskStateLabel(task.state);
+
+    const pct = document.createElement("span");
+    pct.className = "task-pct";
+    pct.textContent = task.state === "success"
+      ? "100%"
+      : (task.state === "failed" ? "—" : task.progress + "%");
+
+    top.appendChild(kind);
+    top.appendChild(badge);
+    top.appendChild(pct);
+
+    const mini = document.createElement("div");
+    mini.className = "task-mini";
+    const fill = document.createElement("i");
+    fill.style.width = task.progress + "%";
+    mini.appendChild(fill);
+
+    const msg = document.createElement("p");
+    msg.className = "task-msg";
+    const summary = task.state === "failed"
+      ? (task.error || task.message)
+      : (taskResultText(task) || task.message);
+    msg.textContent = summary || (task.state === "success" ? "完成" : "…");
+    msg.title = summary || "";
+
+    item.appendChild(top);
+    item.appendChild(mini);
+    item.appendChild(msg);
+    list.appendChild(item);
+  }
+}
+
+async function refreshTasks() {
+  try {
+    const resp = await fetch("/api/tasks", { cache: "no-store" });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    let rawList = null;
+    if (Array.isArray(data)) rawList = data;
+    else if (data && Array.isArray(data.tasks)) rawList = data.tasks;
+    else if (data && Array.isArray(data.items)) rawList = data.items;
+    if (!rawList) return;
+
+    const refreshed = [];
+    for (const raw of rawList) {
+      const task = normalizeTask(raw);
+      if (!task) continue;
+      // 当前任务由 SSE / 轮询驱动，列表刷新时保留它的实时状态。
+      if (task.id === state.currentTaskId) continue;
+      refreshed.push(task);
+      if (refreshed.length >= 20) break;
+    }
+    // 服务端列表是主来源，但刚结束/只在本地出现的任务不能因一次刷新被丢掉。
+    const merged = refreshed.slice();
+    for (const local of state.tasks) {
+      if (merged.length >= 20) break;
+      if (local.id === state.currentTaskId) continue;
+      if (merged.some((task) => task.id === local.id)) continue;
+      merged.push(local);
+    }
+    const current = state.currentTaskId ? findTask(state.currentTaskId) : null;
+    state.tasks = merged;
+    if (current) state.tasks.unshift(current);
+    renderTasks();
+  } catch (err) {
+    // 任务接口不可用时静默跳过，不影响备份/还原主流程。
+  }
+}
+
+function applyTask(raw) {
+  const task = normalizeTask(raw);
+  if (!task) return;
+  upsertTask(task);
+  renderTasks();
+  if (task.id !== state.currentTaskId) return;
+  updateRunProgress(task);
+  if (task.terminal) finishTask(task);
+}
+
+function updateRunProgress(task) {
+  const percent = Math.max(0, Math.min(100, task.progress));
+  $("run-progress-fill").style.width = percent + "%";
+
+  // 进度事件可能很密，状态栏文字只在内容变了才改。
+  const signature = task.state + "|" + percent + "|" +
+    task.message + "|" + task.error;
+  if (signature === state.lastProgressSign) return;
+  state.lastProgressSign = signature;
+
+  const verb = state.currentVerb || describe().verb;
+  let text = task.state === "queued"
+    ? "排队中…"
+    : "正在" + verb + "… " + percent + "%";
+  if (task.message) text += " · " + task.message;
+  setStatus("busy", text);
+}
+
+function finishTask(task) {
+  const ok = task.state === "success";
+  const verb = state.currentVerb || describe().verb;
+  state.currentTaskId = null;
+  stopTaskStreams();
+  setBusy(false);
+
+  showTaskResult(task, ok);
+  if (ok) {
+    setStatus("ok", describeSuccessLine(task, verb));
+  } else {
+    setStatus("err", describeFailureLine(task, verb));
+  }
+  refreshTasks();
+}
+
+function describeSuccessLine(task, verb) {
+  const detail = taskResultText(task);
+  if (detail) {
+    return verb + "完成：" +
+      (detail.slice(-1) === "。" ? detail : detail + "。");
+  }
+  if (task.message) return verb + "完成：" + task.message;
+  return verb + "完成。";
+}
+
+function describeFailureLine(task, verb) {
+  const reason = task.error || task.message || "未知错误。";
+  return verb + "失败：" + reason;
+}
+
+function showTaskResult(task, ok) {
+  const verb = state.currentVerb || describe().verb;
+  const panel = $("result-panel");
+  $("result-title").textContent = verb + (ok ? "完成" : "失败");
+
+  const badge = $("result-state");
+  badge.textContent = ok ? "成功" : "失败";
+  badge.className = "result-state " + (ok ? "is-ok" : "is-err");
+
+  const detail = ok ? taskResultText(task) : "";
+  const detailEl = $("result-detail");
+  detailEl.textContent = detail;
+  detailEl.hidden = !detail;
+
+  const error = ok ? "" : (task.error || task.message || "未知错误。");
+  const errorEl = $("result-error");
+  errorEl.textContent = error;
+  errorEl.hidden = !error;
+
+  const target = task.target || state.currentTarget || "";
+  $("result-path-line").hidden = !target;
+  $("result-path").textContent = target;
+  $("result-copy").disabled = !target;
+  $("result-copy").textContent = "复制路径";
+
+  panel.hidden = false;
+}
+
+function stopTaskStreams() {
+  if (state.sse) {
+    try {
+      state.sse.close();
+    } catch (err) {
+      // 已经关闭过，忽略。
+    }
+    state.sse = null;
+  }
+  if (state.sseWatchdog) {
+    clearTimeout(state.sseWatchdog);
+    state.sseWatchdog = 0;
+  }
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = 0;
+  }
+}
+
+/// SSE 心跳是注释行（: ping），页面收不到；如果长时间没有任何 data 事件，
+/// 说明流可能被中间层缓冲或已经半死，降级成轮询更可靠。
+function resetSseWatchdog(taskId) {
+  if (state.sseWatchdog) clearTimeout(state.sseWatchdog);
+  state.sseWatchdog = setTimeout(() => {
+    state.sseWatchdog = 0;
+    if (state.currentTaskId !== taskId || !state.busy) return;
+    if (state.sse) {
+      try {
+        state.sse.close();
+      } catch (err) {
+        // 忽略。
+      }
+      state.sse = null;
+    }
+    startPolling(taskId);
+  }, 20000);
+}
+
+function handleStreamData(text, taskId) {
+  if (!text) return;
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    return;
+  }
+  resetSseWatchdog(taskId);
+  applyTask(data);
+}
+
+function subscribeTask(taskId) {
+  stopTaskStreams();
+  state.currentTaskId = taskId;
+  state.pollFailures = 0;
+  state.lastProgressSign = "";
+
+  if (typeof EventSource !== "function") {
+    startPolling(taskId);
+    return;
+  }
+
+  let source;
+  try {
+    source = new EventSource(
+      "/api/tasks/" + encodeURIComponent(taskId) + "/stream"
+    );
+  } catch (err) {
+    startPolling(taskId);
+    return;
+  }
+  state.sse = source;
+
+  const onMessage = (event) => {
+    if (state.currentTaskId !== taskId) return;
+    if (event && typeof event.data === "string" && event.data) {
+      handleStreamData(event.data, taskId);
+    }
+  };
+  source.onmessage = onMessage;
+  source.onopen = () => resetSseWatchdog(taskId);
+  // 服务端目前只发未命名事件；命名事件也一并监听，以后改协议不会漏。
+  for (const name of ["progress", "update", "task", "done", "complete",
+                      "completed", "failed", "error"]) {
+    source.addEventListener(name, onMessage);
+  }
+  source.onerror = () => {
+    if (state.currentTaskId !== taskId) return;
+    // 连接失败/被服务端关闭且任务还没终态：降级轮询。
+    if (state.sse) {
+      try {
+        state.sse.close();
+      } catch (err) {
+        // 忽略。
+      }
+      state.sse = null;
+    }
+    startPolling(taskId);
+  };
+  resetSseWatchdog(taskId);
+}
+
+function startPolling(taskId) {
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = 0;
+  }
+  state.pollFailures = 0;
+
+  const tick = async () => {
+    state.pollTimer = 0;
+    if (state.currentTaskId !== taskId || !state.busy) return;
+    try {
+      const resp = await fetch(
+        "/api/tasks/" + encodeURIComponent(taskId),
+        { cache: "no-store" }
+      );
+      if (state.currentTaskId !== taskId || !state.busy) return;
+      if (resp.status === 404) {
+        failCurrentTask("任务不存在或已被清理。");
+        return;
+      }
+      if (resp.ok) {
+        state.pollFailures = 0;
+        applyTask(await resp.json());
+      } else {
+        state.pollFailures += 1;
+      }
+    } catch (err) {
+      state.pollFailures += 1;
+    }
+    if (state.currentTaskId !== taskId || !state.busy) return;
+    if (state.pollFailures >= 8) {
+      failCurrentTask("无法获取任务进度，请确认本地服务仍在运行。");
+      return;
+    }
+    state.pollTimer = setTimeout(
+      tick, state.pollFailures > 3 ? 2000 : 800
+    );
+  };
+  state.pollTimer = setTimeout(tick, 500);
+}
+
+/// SSE / 轮询本身失败（连接断开、任务被清理）时的兜底收尾。
+function failCurrentTask(message) {
+  const task = normalizeTask({
+    id: state.currentTaskId || "",
+    kind: state.mode,
+    state: "failed",
+    progress: 0,
+    error: message,
+    target: state.currentTarget || "",
+  });
+  state.currentTaskId = null;
+  stopTaskStreams();
+  if (task) {
+    upsertTask(task);
+    renderTasks();
+    finishTask(task);
+  } else {
+    setBusy(false);
+    setStatus("err",
+      (state.currentVerb || describe().verb) + "失败：" + message);
+  }
+}
+
+/// 提交前后统一管理表单的禁用状态：fieldset.disabled 会级联到所有字段。
+function setBusy(busy) {
+  state.busy = busy;
+  $("fields").disabled = busy;
+  for (const tab of document.querySelectorAll(".tab")) tab.disabled = busy;
+
+  const go = $("go");
+  go.disabled = busy;
+  go.textContent = busy
+    ? "正在" + (state.currentVerb || describe().verb) + "…"
+    : "开始" + describe().verb;
+
+  $("run-progress").hidden = !busy;
+  if (!busy) $("run-progress-fill").style.width = "0%";
+}
+
+/// 提交任务。新接口返回 {"task_id": "..."}；万一遇到还没迁移的同步接口，
+/// 把返回文本当结果直接显示，不让界面卡死。
+async function postTaskRequest(url, params) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    // 必须用 URLSearchParams 拼 body，不要手写字符串拼接：
+    //   1. 它会自动带上 Content-Type: application/x-www-form-urlencoded，
+    //      httplib 靠这个才把字段填进 req.params；
+    //   2. 它会把 + & = % 和所有非 ASCII 字节正确百分号编码。
+    //      手写拼接的话，路径里一个字面 "+" 会被服务端解成空格。
+    body: new URLSearchParams(params),
+  });
+  const text = (await resp.text()).trim();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      data = null;
+    }
+  }
+  if (!resp.ok) {
+    let reason = "";
+    if (data && typeof data === "object") {
+      reason = errorText(data.error) || textOf(data.message);
+    }
+    if (!reason && text && text.length <= 300) reason = text;
+    throw new Error(reason || ("提交任务失败（HTTP " + resp.status + "）。"));
+  }
+
+  let taskId = "";
+  if (data && typeof data === "object") {
+    const nested = data.task && typeof data.task === "object"
+      ? data.task
+      : null;
+    taskId = textOf(data.task_id) || textOf(data.taskId) ||
+      textOf(data.id) ||
+      (nested ? (textOf(nested.id) || textOf(nested.task_id)) : "");
+  }
+  if (taskId) return { taskId: taskId };
+  if (text) return { legacyText: text };
+  return { taskId: "" };
+}
+
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (state.busy) return;
 
   const d = describe();
   const src = $("src").value.trim();
@@ -986,60 +2321,170 @@ $("form").addEventListener("submit", async (e) => {
     return;
   }
 
+  const passwordValue = $("password").value;
+  let filterValue = null;
+
+  if (state.mode === "backup") {
+    if (state.pack && state.encryption !== "none" && !passwordValue) {
+      setStatus("err", "已选择加密算法，请先填写密码。");
+      $("password").focus();
+      return;
+    }
+    const filterCheck = validateFilterText($("filter").value);
+    if (!filterCheck.ok) {
+      updateFilterStatus();
+      setStatus("err", "筛选规则无效：" + filterCheck.message);
+      $("filter").focus();
+      return;
+    }
+    if (!filterCheck.empty) filterValue = JSON.stringify(filterCheck.rules);
+  }
+
   // 字段名与语义和 CLI 的 --src / --dst / --pack / --archive 一一对应
   // （见 cli/main.cpp 的 backup / restore 分支），GUI 和 CLI 走的是同一批
   // backup:: 函数，行为不可能漂移。
-  let url, params;
+  let url;
+  const params = {};
   if (state.mode === "backup") {
     url = "/api/backup";
-    params = { src, dst };
+    params.src = src;
+    params.dst = dst;
+    params.metadata = state.metadata ? "1" : "0";
+    // 筛选规则对打包和目录镜像两种模式都生效（见 http_server.cpp）。
+    if (filterValue) params.filter = filterValue;
     if (state.pack) {
       params.pack = "vbak";
+      const info = currentCompressionInfo();
       if (state.compression !== "none") {
         params.compress = state.compression;
-        const info = currentCompressionInfo();
         if (info.has_level) {
           const raw = Number.parseInt($("level").value, 10);
-          const level = Number.isFinite(raw) ? raw : state.level;
           const [minLevel, maxLevel] = compressionLevelRange(info);
-          params.level = String(
-            Math.min(maxLevel, Math.max(minLevel, level))
-          );
+          const level = Number.isFinite(raw)
+            ? Math.min(maxLevel, Math.max(minLevel, raw))
+            : minLevel;
+          params.level = String(level);
         }
+      }
+      if (state.encryption !== "none") {
+        params.encrypt = state.encryption;
+        params.password = passwordValue;
       }
     }
   } else {
     url = "/api/restore";
-    params = { dst };
-    if (state.kind === "archive") params.archive = src;
-    else params.src = src;
+    params.dst = dst;
+    params.metadata = state.metadata ? "1" : "0";
+    if (state.kind === "archive") {
+      params.archive = src;
+      if (passwordValue) params.password = passwordValue;
+    } else {
+      params.src = src;
+    }
   }
 
-  const go = $("go");
-  go.disabled = true;
-  setStatus("busy", "正在" + d.verb + "，请稍候…");
+  state.currentVerb = d.verb;
+  state.currentTarget = dst;
+  state.lastProgressSign = "";
+  setBusy(true);
+  setStatus("busy", "正在" + d.verb + "… 0%");
 
   try {
-    // 必须用 URLSearchParams 拼 body，不要手写字符串拼接：
-    //   1. 它会自动带上 Content-Type: application/x-www-form-urlencoded，
-    //      httplib 靠这个才把字段填进 req.params；
-    //   2. 它会把 + & = % 和所有非 ASCII 字节正确百分号编码。
-    //      手写拼接的话，路径里一个字面 "+" 会被服务端解成空格。
-    const r = await fetch(url, {
-      method: "POST",
-      body: new URLSearchParams(params),
+    const outcome = await postTaskRequest(url, params);
+    if (!outcome.taskId) {
+      // 老接口：同步返回结果文本，没有任务可订阅。当作一次成功显示，
+      // 至少不会让「点了没反应」。
+      const legacy = normalizeTask({
+        id: "legacy-" + Date.now(),
+        kind: state.mode,
+        state: "success",
+        progress: 100,
+        result: outcome.legacyText || "",
+        target: dst,
+      });
+      if (legacy) {
+        upsertTask(legacy);
+        renderTasks();
+        finishTask(legacy);
+      } else {
+        setBusy(false);
+        setStatus("ok", outcome.legacyText || "操作完成。");
+      }
+      return;
+    }
+
+    const pending = normalizeTask({
+      id: outcome.taskId,
+      kind: state.mode,
+      state: "queued",
+      progress: 0,
+      message: "已提交，等待开始…",
+      target: dst,
     });
-    const text = (await r.text()).trim();
-    setStatus(r.ok ? "ok" : "err", text || (r.ok ? "操作完成。" : "操作失败。"));
+    if (pending) upsertTask(pending);
+    renderTasks();
+    subscribeTask(outcome.taskId);
   } catch (err) {
-    setStatus("err", "无法连接本地服务，请确认 FileBackup 仍在运行。");
-  } finally {
-    go.disabled = false;
+    setBusy(false);
+    setStatus("err", err && err.message
+      ? err.message
+      : "无法连接本地服务，请确认 FileBackup 仍在运行。");
   }
 });
 
+// ---- 结果区：复制目标路径 ------------------------------------------------
+// 宿主目前只实现了窗口/选择框命令，没有「在资源管理器中打开」的命令，
+// 所以先提供复制路径；等后端加了打开文件夹的命令再接上。
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) {
+    // 落到 execCommand 兜底。
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+$("result-copy").addEventListener("click", async () => {
+  const text = $("result-path").textContent;
+  if (!text) return;
+  const button = $("result-copy");
+  const ok = await copyText(text);
+  button.textContent = ok ? "已复制" : "复制失败";
+  setTimeout(() => {
+    button.textContent = "复制路径";
+  }, 1600);
+});
+
+$("tasks-refresh").addEventListener("click", () => {
+  refreshTasks();
+});
+
+// ---- 启动 ----------------------------------------------------------------
+$("filter").placeholder =
+  "例如（六维：path / name / type / size / time / user）：\n" + FILTER_EXAMPLE;
+
+fillCompressionOptions();
+fillEncryptionOptions();
 render();
 loadAlgorithms();
+refreshTasks();
 
 // 打开窗口就能直接输入路径，不用先点一下输入框。
 $("src").focus();

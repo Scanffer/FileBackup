@@ -14,6 +14,8 @@
 add_library(backup_server STATIC
     http_server.cpp
     http_server.h     # 仅让 IDE 显示出来，不参与编译
+    tasks.cpp         # 异步任务管理器（单 worker 串行执行备份/还原）
+    tasks.h           # 同上
     web_page.h        # 同上
     webview_host.cpp
     webview_host.h    # 同上
