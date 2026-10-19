@@ -2,8 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 // ===========================================================================
 // 自研 DEFLATE 压缩 / 解压（RFC 1951，外加 RFC 1950 的 zlib 头）
@@ -690,6 +695,521 @@ public:
     }
 };
 
+// ===========================================================================
+// 自研 LZ4（标准 LZ4 block 格式）
+//
+// 压缩端：
+//   - 4 字节哈希表（12 位，4096 项）记录最近一次出现位置；
+//   - 贪心策略：当前位置命中哈希且 offset <= 65535 时立刻取最长匹配；
+//   - 遵循 block 格式的尾部约束：最后一个匹配起点距块尾 >= 12 字节
+//     （MFLIMIT），末尾至少保留 5 个字节作为字面量（LASTLITERALS），
+//     最后一个序列只含字面量、token 的低 4 位为 0。
+//
+// 解压端：
+//   - 严格校验 token、长度扩展字节、offset、流截断；
+//   - offset 必须落在已解压数据内；解压结果必须等于 expected_size。
+//
+// 注意：标准 block 格式本身不带校验和，so 损坏流只能靠结构检查和
+// expected_size 兜底；需要完整性校验时由上层（VBAK/CRC32）负责。
+// ===========================================================================
+
+class Lz4Compressor final : public ICompressor {
+public:
+    CompressionId id() const override { return CompressionId::Lz4; }
+
+    Bytes compress(const Bytes& input, int level, std::string& error) override {
+        error.clear();
+        (void)level;  // LZ4 没有压缩级别
+
+        constexpr std::size_t kLastLiterals = 5;
+        constexpr std::size_t kMatchFindLimit = 12;
+        constexpr std::size_t kMinMatch = 4;
+        constexpr std::size_t kMaxOffset = 65535;
+        constexpr int kHashLog = 12;
+        constexpr std::uint32_t kHashMul = 2654435761u;
+
+        const std::size_t n = input.size();
+        Bytes out;
+        out.reserve(n + n / 255 + 16);
+
+        // 空输入 = 一个空的最后字面量序列（标准 block 格式下为单字节 0x00）。
+        if (n == 0) {
+            out.push_back(0);
+            return out;
+        }
+
+        std::vector<std::int64_t> head(std::size_t{1} << kHashLog, -1);
+
+        auto hash_at = [&](std::size_t pos) -> std::uint32_t {
+            std::uint32_t value = 0;
+            std::memcpy(&value, input.data() + pos, 4);
+            return (value * kHashMul) >> (32 - kHashLog);
+        };
+
+        auto emit_sequence = [&](std::size_t literal_start,
+                                 std::size_t literal_len, std::size_t offset,
+                                 std::size_t match_len) {
+            const std::size_t lit_nibble = std::min<std::size_t>(literal_len, 15);
+            const std::size_t match_nibble =
+                std::min<std::size_t>(match_len - kMinMatch, 15);
+            out.push_back(static_cast<std::uint8_t>((lit_nibble << 4) |
+                                                    match_nibble));
+            if (literal_len >= 15) {
+                std::size_t rest = literal_len - 15;
+                while (rest >= 255) {
+                    out.push_back(255);
+                    rest -= 255;
+                }
+                out.push_back(static_cast<std::uint8_t>(rest));
+            }
+            const auto lit_begin = input.begin() +
+                                   static_cast<std::ptrdiff_t>(literal_start);
+            out.insert(out.end(), lit_begin,
+                       lit_begin + static_cast<std::ptrdiff_t>(literal_len));
+            out.push_back(static_cast<std::uint8_t>(offset & 0xFF));
+            out.push_back(static_cast<std::uint8_t>((offset >> 8) & 0xFF));
+            if (match_len - kMinMatch >= 15) {
+                std::size_t rest = match_len - kMinMatch - 15;
+                while (rest >= 255) {
+                    out.push_back(255);
+                    rest -= 255;
+                }
+                out.push_back(static_cast<std::uint8_t>(rest));
+            }
+        };
+
+        std::size_t anchor = 0;
+        std::size_t pos = 0;
+        while (pos + kMatchFindLimit <= n) {
+            const std::uint32_t hash = hash_at(pos);
+            const std::int32_t candidate = head[hash];
+            head[hash] = static_cast<std::int32_t>(pos);
+            if (candidate >= 0) {
+                const std::size_t cand = static_cast<std::size_t>(candidate);
+                if (pos - cand <= kMaxOffset &&
+                    std::memcmp(input.data() + cand, input.data() + pos,
+                                kMinMatch) == 0) {
+                    std::size_t match_len = kMinMatch;
+                    const std::size_t max_match = n - kLastLiterals - pos;
+                    while (match_len < max_match &&
+                           input[cand + match_len] == input[pos + match_len]) {
+                        ++match_len;
+                    }
+                    emit_sequence(anchor, pos - anchor, pos - cand, match_len);
+                    pos += match_len;
+                    anchor = pos;
+                    continue;
+                }
+            }
+            ++pos;
+        }
+
+        // 最后字面量序列（只含字面量，token 低 4 位为 0）。
+        {
+            const std::size_t literal_len = n - anchor;
+            const std::size_t lit_nibble = std::min<std::size_t>(literal_len, 15);
+            out.push_back(static_cast<std::uint8_t>(lit_nibble << 4));
+            if (literal_len >= 15) {
+                std::size_t rest = literal_len - 15;
+                while (rest >= 255) {
+                    out.push_back(255);
+                    rest -= 255;
+                }
+                out.push_back(static_cast<std::uint8_t>(rest));
+            }
+            out.insert(out.end(),
+                       input.begin() + static_cast<std::ptrdiff_t>(anchor),
+                       input.end());
+        }
+        return out;
+    }
+
+    Bytes decompress(const Bytes& input, std::size_t expected_size,
+                     std::string& error) override {
+        error.clear();
+        Bytes out;
+        out.reserve(std::min<std::size_t>(expected_size, 64u * 1024u * 1024u));
+
+        const std::size_t n = input.size();
+        std::size_t ip = 0;
+        while (true) {
+            if (ip >= n) {
+                error = "LZ4 流在 token 位置被截断";
+                return {};
+            }
+            const std::uint8_t token = input[ip++];
+            std::size_t literal_len = token >> 4;
+            if (literal_len == 15) {
+                while (true) {
+                    if (ip >= n) {
+                        error = "LZ4 字面量长度扩展被截断";
+                        return {};
+                    }
+                    const std::uint8_t extra = input[ip++];
+                    literal_len += extra;
+                    if (extra != 255) break;
+                }
+            }
+            if (literal_len > n - ip) {
+                error = "LZ4 字面量长度超出流范围";
+                return {};
+            }
+            if (literal_len > expected_size - out.size()) {
+                error = "LZ4 解压后大小与预期不符";
+                return {};
+            }
+            out.insert(out.end(),
+                       input.begin() + static_cast<std::ptrdiff_t>(ip),
+                       input.begin() +
+                           static_cast<std::ptrdiff_t>(ip + literal_len));
+            ip += literal_len;
+
+            // 字面量后流就结束了：这是一个合法的“最后字面量序列”。
+            if (ip == n) break;
+
+            if (n - ip < 2) {
+                error = "LZ4 匹配序列缺少 2 字节 offset";
+                return {};
+            }
+            const std::size_t offset = static_cast<std::size_t>(input[ip]) |
+                                       (static_cast<std::size_t>(input[ip + 1])
+                                        << 8);
+            ip += 2;
+            if (offset == 0 || offset > out.size()) {
+                error = "LZ4 offset 越界";
+                return {};
+            }
+            std::size_t match_len = token & 0x0F;
+            if (match_len == 15) {
+                while (true) {
+                    if (ip >= n) {
+                        error = "LZ4 匹配长度扩展被截断";
+                        return {};
+                    }
+                    const std::uint8_t extra = input[ip++];
+                    match_len += extra;
+                    if (extra != 255) break;
+                }
+            }
+            match_len += 4;  // block 格式里匹配长度最小为 4
+            if (match_len > expected_size - out.size()) {
+                error = "LZ4 解压后大小与预期不符";
+                return {};
+            }
+            const std::size_t start = out.size() - offset;
+            for (std::size_t i = 0; i < match_len; ++i) {
+                out.push_back(out[start + i]);  // 允许重叠复制
+            }
+        }
+
+        if (out.size() != expected_size) {
+            error = "LZ4 解压后大小与预期不符";
+            return {};
+        }
+        return out;
+    }
+};
+
+// ===========================================================================
+// 自研 RLE（自定义游程编码）
+//
+// 协议（无文件头；字节流由若干 packet 顺序拼接而成，解压即原文）：
+//   - 控制字节 c < 0x80：字面量 packet。count = (c & 0x7F) + 1（1..128），
+//     紧跟 count 个原始字节。
+//   - 控制字节 c >= 0x80：重复 packet。count = (c & 0x7F) + 2（2..129），
+//     紧跟 1 个字节 v，表示 v 连续重复 count 次。
+//   控制字节的最高位是 packet 类型标记，所以两类 packet 不会歧义；空输入
+//   编码为空流。压缩端只把长度 >= 3 的游程编码成重复 packet（长度 1~2 时
+//   并进字面量更划算）。
+// ===========================================================================
+
+class RleCompressor final : public ICompressor {
+public:
+    CompressionId id() const override { return CompressionId::Rle; }
+
+    Bytes compress(const Bytes& input, int level, std::string& error) override {
+        error.clear();
+        (void)level;
+
+        constexpr std::size_t kMaxLiteral = 128;
+        constexpr std::size_t kMaxRun = 129;
+
+        const std::size_t n = input.size();
+        Bytes out;
+        out.reserve(n / 4 + 16);
+
+        Bytes literals;
+        literals.reserve(kMaxLiteral);
+        auto flush_literals = [&]() {
+            if (literals.empty()) return;
+            out.push_back(static_cast<std::uint8_t>(literals.size() - 1));
+            out.insert(out.end(), literals.begin(), literals.end());
+            literals.clear();
+        };
+
+        std::size_t pos = 0;
+        while (pos < n) {
+            std::size_t run = 1;
+            while (pos + run < n && input[pos + run] == input[pos]) ++run;
+            if (run >= 3) {
+                flush_literals();
+                while (run >= 3) {
+                    const std::size_t chunk = std::min(run, kMaxRun);
+                    out.push_back(
+                        static_cast<std::uint8_t>(0x80 | (chunk - 2)));
+                    out.push_back(input[pos]);
+                    pos += chunk;
+                    run -= chunk;
+                }
+                // 余下 0~2 个字节并入字面量，避免为它们浪费重复 packet。
+                for (std::size_t i = 0; i < run; ++i) {
+                    literals.push_back(input[pos + i]);
+                }
+                pos += run;
+                if (literals.size() == kMaxLiteral) flush_literals();
+            } else {
+                literals.push_back(input[pos]);
+                ++pos;
+                if (literals.size() == kMaxLiteral) flush_literals();
+            }
+        }
+        flush_literals();
+        return out;
+    }
+
+    Bytes decompress(const Bytes& input, std::size_t expected_size,
+                     std::string& error) override {
+        error.clear();
+        Bytes out;
+        out.reserve(std::min<std::size_t>(expected_size, 64u * 1024u * 1024u));
+
+        const std::size_t n = input.size();
+        std::size_t ip = 0;
+        while (ip < n) {
+            const std::uint8_t control = input[ip++];
+            if (control < 0x80) {
+                const std::size_t count =
+                    static_cast<std::size_t>(control & 0x7F) + 1;
+                if (count > n - ip) {
+                    error = "RLE 字面量 packet 数据被截断";
+                    return {};
+                }
+                if (count > expected_size - out.size()) {
+                    error = "RLE 解压后大小与预期不符";
+                    return {};
+                }
+                out.insert(out.end(),
+                           input.begin() + static_cast<std::ptrdiff_t>(ip),
+                           input.begin() +
+                               static_cast<std::ptrdiff_t>(ip + count));
+                ip += count;
+            } else {
+                const std::size_t count =
+                    static_cast<std::size_t>(control & 0x7F) + 2;
+                if (ip >= n) {
+                    error = "RLE 重复 packet 缺少数据字节";
+                    return {};
+                }
+                if (count > expected_size - out.size()) {
+                    error = "RLE 解压后大小与预期不符";
+                    return {};
+                }
+                out.insert(out.end(), count, input[ip++]);
+            }
+        }
+        if (out.size() != expected_size) {
+            error = "RLE 解压后大小与预期不符";
+            return {};
+        }
+        return out;
+    }
+};
+
+// ===========================================================================
+// 自研 LZW（9 -> 16 位可变码长，CLEAR / END，字典满重置）
+//
+// 码流格式：
+//   - 初始字典 0..255 对应单字节，256 = CLEAR，257 = END，新码从 258 开始；
+//   - 码按 LSB 优先打包成位流（无文件头，格式由 CompressionId::Lzw 标识）；
+//   - 位宽调度：自上次 CLEAR 起已写/读 k 个码后，下一个码的位宽为
+//     ceil(log2(258 + k))，夹在 [9, 16]。压缩端与解压端用同一公式推导，
+//     因此不需要在流里额外写位宽标记；
+//   - 16 位码用尽（下一个码 > 65535）时，压缩端立即写 CLEAR 并清空字典；
+//     解压端读到 CLEAR 同步重置。空输入 = CLEAR + END。
+//
+// 解压端支持经典的“码 == 下一个待分配码”情况（KwKwK：前一个串 + 其首字节），
+// 并校验非法码、截断流与 expected_size。
+// ===========================================================================
+
+constexpr std::uint16_t kLzwClearCode = 256;
+constexpr std::uint16_t kLzwEndCode = 257;
+constexpr std::size_t kLzwFirstCode = 258;
+constexpr int kLzwMinBits = 9;
+constexpr int kLzwMaxBits = 16;
+
+/// 自上次 CLEAR 起已写/读 k 个码后，下一个码的位宽（压缩/解压端共用）。
+int lzw_width(std::size_t emitted_since_clear) {
+    const std::size_t needed = emitted_since_clear + kLzwFirstCode;
+    int bits = kLzwMinBits;
+    while (bits < kLzwMaxBits && needed > (std::size_t{1} << bits)) ++bits;
+    return bits;
+}
+
+class LzwCompressor final : public ICompressor {
+public:
+    CompressionId id() const override { return CompressionId::Lzw; }
+
+    Bytes compress(const Bytes& input, int level, std::string& error) override {
+        error.clear();
+        (void)level;
+
+        BitWriter writer;
+        std::unordered_map<std::uint32_t, std::uint16_t> dict;
+        dict.reserve(1 << 16);
+        std::size_t next_code = kLzwFirstCode;
+        std::size_t emitted = 0;  // 自上次 CLEAR 起已输出的码数
+
+        auto write_code = [&](std::uint16_t code) {
+            writer.put_bits(code, lzw_width(emitted));
+            ++emitted;
+        };
+        auto reset_dict = [&]() {
+            dict.clear();
+            next_code = kLzwFirstCode;
+            emitted = 0;
+        };
+
+        write_code(kLzwClearCode);  // 流首 CLEAR：解压端据此进入已知状态
+        reset_dict();
+
+        if (input.empty()) {
+            write_code(kLzwEndCode);
+            return writer.take();
+        }
+
+        std::uint16_t w = input[0];
+        for (std::size_t i = 1; i < input.size(); ++i) {
+            const std::uint8_t c = input[i];
+            const std::uint32_t key =
+                (static_cast<std::uint32_t>(w) << 8) | c;
+            const auto found = dict.find(key);
+            if (found != dict.end()) {
+                w = found->second;
+                continue;
+            }
+            write_code(w);
+            dict.emplace(key, static_cast<std::uint16_t>(next_code));
+            ++next_code;
+            if (next_code > 0xFFFF) {
+                // 字典满（65535 已分配）：写 CLEAR，两侧同时重置。
+                write_code(kLzwClearCode);
+                reset_dict();
+            }
+            w = c;
+        }
+        write_code(w);
+        write_code(kLzwEndCode);
+        return writer.take();
+    }
+
+    Bytes decompress(const Bytes& input, std::size_t expected_size,
+                     std::string& error) override {
+        error.clear();
+        if (input.empty()) {
+            error = "LZW 流为空";
+            return {};
+        }
+
+        BitReader reader(input.data(), input.size());
+        std::vector<std::string> dict;
+        dict.reserve(1 << 16);
+        std::size_t next_code = kLzwFirstCode;
+        std::size_t emitted = 0;  // 自上次 CLEAR 起已读入的码数
+
+        auto reset_dict = [&]() {
+            dict.clear();
+            dict.reserve(1 << 16);
+            for (int i = 0; i < 256; ++i) {
+                dict.emplace_back(1, static_cast<char>(i));
+            }
+            dict.emplace_back();  // 256 CLEAR
+            dict.emplace_back();  // 257 END
+            next_code = kLzwFirstCode;
+            emitted = 0;
+        };
+        auto read_code = [&](std::uint16_t& code) -> bool {
+            std::uint32_t value = 0;
+            if (!reader.read_bits(lzw_width(emitted), value)) return false;
+            ++emitted;
+            code = static_cast<std::uint16_t>(value);
+            return true;
+        };
+
+        reset_dict();
+
+        std::uint16_t code = 0;
+        if (!read_code(code)) {
+            error = "LZW 流被截断（缺少初始 CLEAR）";
+            return {};
+        }
+        if (code != kLzwClearCode) {
+            error = "LZW 流缺少初始 CLEAR 码";
+            return {};
+        }
+        reset_dict();  // 初始 CLEAR 之后与压缩端从同一状态出发
+
+        Bytes out;
+        out.reserve(std::min<std::size_t>(expected_size, 64u * 1024u * 1024u));
+
+        long prev = -1;  // 上一个码；-1 表示刚 CLEAR
+        while (true) {
+            if (!read_code(code)) {
+                error = "LZW 流被截断（缺少 END 码）";
+                return {};
+            }
+            if (code == kLzwClearCode) {
+                reset_dict();
+                prev = -1;
+                continue;
+            }
+            if (code == kLzwEndCode) break;
+
+            std::string entry;
+            if (static_cast<std::size_t>(code) < next_code) {
+                entry = dict[code];
+            } else if (code == next_code && prev >= 0) {
+                // KwKwK：解压端比压缩端晚一个码建表。
+                entry = dict[static_cast<std::size_t>(prev)];
+                entry.push_back(entry[0]);
+            } else {
+                error = "LZW 非法码（字典中不存在）";
+                return {};
+            }
+
+            if (entry.size() > expected_size - out.size()) {
+                error = "LZW 解压后大小与预期不符";
+                return {};
+            }
+            out.insert(out.end(), entry.begin(), entry.end());
+
+            if (prev >= 0 && next_code < (std::size_t{1} << kLzwMaxBits)) {
+                std::string new_entry =
+                    dict[static_cast<std::size_t>(prev)];
+                new_entry.push_back(static_cast<char>(entry[0]));
+                dict.push_back(std::move(new_entry));
+                ++next_code;
+            }
+            prev = code;
+        }
+
+        if (out.size() != expected_size) {
+            error = "LZW 解压后大小与预期不符";
+            return {};
+        }
+        return out;
+    }
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -743,6 +1263,12 @@ std::unique_ptr<ICompressor> make_compressor(CompressionId id) {
     switch (id) {
         case CompressionId::Deflate:
             return std::make_unique<DeflateCompressor>();
+        case CompressionId::Lz4:
+            return std::make_unique<Lz4Compressor>();
+        case CompressionId::Rle:
+            return std::make_unique<RleCompressor>();
+        case CompressionId::Lzw:
+            return std::make_unique<LzwCompressor>();
         default:
             return nullptr;
     }

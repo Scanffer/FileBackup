@@ -6,30 +6,56 @@
 #include "algorithm.h"
 
 /*
-VBAK v2 归档格式（全部小端）
+VBAK 归档格式（全部小端）
 ================================================================
-Header (24 字节)
-  magic       "VBAK"     4
-  version     uint16     2   ← 2
-  flags       uint16     2   ← 预留（加密/索引等）
-  comp_id     uint8      1   ← 归档默认压缩算法（0=none,1=deflate,...）
-  reserved    uint8[3]   3
-  entry_count uint32     4
-  data_off    uint32     4   ← 24
+v1（历史版本，只读兼容）
+  Header 20 字节：magic/version=1/flags/entry_count/reserved/data_off
+  Entry：path_len u16 + path + data_size u64 + checksum u32 + data
 
-Entry × entry_count
-  path_len    uint16     2
-  path        UTF-8      path_len 字节
-  orig_size   uint64     8   ← 原始大小
-  stor_size   uint64     8   ← 存储大小（压缩后）
-  crc32       uint32     4   ← 原始内容 CRC32
-  comp_id     uint8      1   ← 本条目实际使用的压缩算法（0=未压缩）
-  data        stor_size 字节
+v2（未加密，当前默认）
+  Header 20 字节
+    magic "VBAK" 4
+    version u16 = 2
+    flags u16
+    comp_id u8
+    reserved u8[3]
+    entry_count u32
+    data_off u32 = 20
+  Entry
+    path_len u16 + path
+    orig_size u64
+    stor_size u64
+    crc32 u32（原始内容）
+    comp_id u8（0=原样存储，否则条目实际使用的压缩算法）
+    data stor_size 字节
 
-说明：
-  - 压缩是逐条目独立的，comp_id 为 0 表示该条目直接存原数据；
-    对不可压缩的文件（压缩后反而变大）会自动退化为原始存储。
-  - v1 归档（没有 compression/crc 字段）仍可解包。
+v3（加密，存在加密参数时写出）
+  Header 64 字节
+    magic "VBAK" 4
+    version u16 = 3
+    flags u16（bit0=1 表示加密）
+    comp_id u8      ← 归档默认压缩算法
+    enc_id u8       ← 加密算法
+    reserved u16
+    entry_count u32
+    data_off u32 = 64
+    kdf_iterations u32
+    salt u8[16]     ← PBKDF2 盐
+    reserved2 u8[24]
+  Entry
+    path_len u16 + path
+    orig_size u64
+    stor_size u64（含 AEAD tag / CBC padding）
+    crc32 u32（原始内容）
+    comp_id u8
+    iv u8[16]       ← 实际使用前 iv_size 字节（AES 16 / ChaCha 12 / RC4 16）
+    data stor_size 字节
+
+约定：
+  - 每条目独立压缩、独立 IV 加密；次序是「先压缩，再加密」；
+  - 密码不写入归档；PBKDF2 派生一次密钥，供所有条目使用；
+  - 不可压缩的文件仍会以 comp_id=0 存储，避免归档变大；
+  - v1/v2 归档仍可解包；新归档在有加密参数时写 v3，否则写 v2。
 */
 
 namespace backup {
@@ -40,6 +66,10 @@ struct PackOptions {
     std::filesystem::path archive;  ///< 输出 .vbak 文件路径
     CompressionId compression = CompressionId::None;
     int compression_level = 6;
+
+    /// 加密算法；非 None 时写出 v3 归档，password 必须非空。
+    EncryptionId encryption = EncryptionId::None;
+    std::string password;
 };
 
 struct PackResult {
@@ -52,6 +82,7 @@ struct UnpackOptions {
     std::filesystem::path archive;  ///< 输入 .vbak 文件
     std::filesystem::path dst;      ///< 还原目标目录
     bool overwrite = true;          ///< 目标已存在时是否覆盖
+    std::string password;           ///< v3 归档需要
 };
 
 struct UnpackResult {

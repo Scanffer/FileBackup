@@ -33,6 +33,7 @@ target_link_libraries(backup_core
 )
 
 if(WIN32)
-    # 加密算法走 Windows CNG（AES / ChaCha20-Poly1305 / PBKDF2）。
-    target_link_libraries(backup_core PRIVATE bcrypt)
+    # bcrypt：random_bytes 用 BCryptGenRandom（只做安全随机源）。
+    # advapi32：元数据的属主/ACL 读写（GetNamedSecurityInfo / SetFileSecurity 等）。
+    target_link_libraries(backup_core PRIVATE bcrypt advapi32)
 endif()

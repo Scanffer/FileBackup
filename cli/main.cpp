@@ -53,6 +53,22 @@ std::string narrow_ascii(const std::wstring& w) {
     return std::string(w.begin(), w.end());
 }
 
+/// 宽字符串 -> UTF-8。密码可能包含中文/非 ASCII，不能用 narrow_ascii。
+std::string wide_to_utf8(const std::wstring& w) {
+#ifdef _WIN32
+    const int size = WideCharToMultiByte(CP_UTF8, 0, w.data(),
+                                         static_cast<int>(w.size()), nullptr,
+                                         0, nullptr, nullptr);
+    if (size <= 0) return {};
+    std::string out(static_cast<std::size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()),
+                        out.data(), size, nullptr, nullptr);
+    return out;
+#else
+    return std::string(w.begin(), w.end());
+#endif
+}
+
 std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
                                      const std::wstring& key) {
     for (int i = start; i < argc; ++i) {
@@ -120,8 +136,10 @@ void print_usage(std::ostream& os) {
           "\n"
           "示例：\n"
           "  FileBackup-cli backup  --src ./docs --dst ./bak/docs.vbak \\\n"
-          "                         --pack vbak --compress deflate --level 6\n"
-          "  FileBackup-cli restore --archive ./bak/docs.vbak --dst ./restored\n"
+          "                         --pack vbak --compress deflate --level 6 \\\n"
+          "                         --encrypt aes256cbc --password 123456\n"
+          "  FileBackup-cli restore --archive ./bak/docs.vbak --dst ./restored \\\n"
+          "                         --password 123456\n"
           "\n"
           "图形界面是独立程序 FileBackup.exe，双击启动；调试用参数：\n"
           "  FileBackup.exe --port 8080 --browser --no-browser\n";
@@ -209,11 +227,14 @@ int main(int argc, char** argv) {
         const auto pack = find_opt(argc, argv, 2, L"--pack");
         const auto compress = find_opt(argc, argv, 2, L"--compress");
         const auto level = find_opt(argc, argv, 2, L"--level");
+        const auto encrypt = find_opt(argc, argv, 2, L"--encrypt");
+        const auto password = find_opt(argc, argv, 2, L"--password");
 
         if (!src || !dst) {
             std::cerr << "用法：FileBackup-cli backup --src <目录> --dst <目标>\n"
                          "      加 --pack vbak 打包成单文件归档，可再指定\n"
-                         "      --compress deflate --level 6\n";
+                         "      --compress deflate --level 6\n"
+                         "      --encrypt aes256cbc --password <密码>\n";
             return 1;
         }
 
@@ -253,15 +274,38 @@ int main(int argc, char** argv) {
                         return 1;
                     }
                 }
+                if (encrypt) {
+                    const auto id = backup::encryption_from_string(
+                        narrow_ascii(*encrypt));
+                    if (!id) {
+                        std::cerr << "不支持的加密算法："
+                                  << narrow_ascii(*encrypt) << "\n";
+                        return 1;
+                    }
+                    o.encryption = *id;
+                }
+                if (password) o.password = wide_to_utf8(*password);
+                if (o.encryption != backup::EncryptionId::None &&
+                    o.password.empty()) {
+                    std::cerr << "使用 --encrypt 时必须提供非空 --password。\n";
+                    return 1;
+                }
+                if (o.encryption == backup::EncryptionId::None && password) {
+                    std::cerr << "--password 只在 --encrypt 时生效。\n";
+                    return 1;
+                }
 
                 const backup::PackResult r = backup::pack_directory(o);
-                std::cout << "打包完成（" << backup::to_string(o.compression)
-                          << "）：" << r.entries_written << " 个文件，"
+                std::cout << "打包完成（" << backup::to_string(o.compression);
+                if (o.encryption != backup::EncryptionId::None) {
+                    std::cout << "，加密 " << backup::to_string(o.encryption);
+                }
+                std::cout << "）：" << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
             } else {
-                if (compress || level) {
-                    std::cerr << "--compress / --level 只在 --pack vbak "
-                                 "模式下生效。\n";
+                if (compress || level || encrypt || password) {
+                    std::cerr << "--compress / --level / --encrypt / "
+                                 "--password 只在 --pack vbak 模式下生效。\n";
                     return 1;
                 }
                 backup::MirrorOptions o;
@@ -286,12 +330,18 @@ int main(int argc, char** argv) {
         const auto archive = find_opt(argc, argv, 2, L"--archive");
         const auto src = find_opt(argc, argv, 2, L"--src");
         const auto dst = find_opt(argc, argv, 2, L"--dst");
+        const auto password = find_opt(argc, argv, 2, L"--password");
 
         if (!dst || (!archive && !src)) {
             std::cerr
                 << "用法：FileBackup-cli restore --archive <归档> --dst <目录>\n"
                    "      或 FileBackup-cli restore --src <备份目录> --dst "
-                   "<目录>\n";
+                   "<目录>\n"
+                   "      加密归档需加 --password <密码>\n";
+            return 1;
+        }
+        if (!archive && password) {
+            std::cerr << "--password 只在解包加密归档时使用。\n";
             return 1;
         }
 
@@ -300,6 +350,7 @@ int main(int argc, char** argv) {
                 backup::UnpackOptions o;
                 o.archive = *archive;
                 o.dst = *dst;
+                if (password) o.password = wide_to_utf8(*password);
                 const backup::UnpackResult r = backup::unpack_archive(o);
                 std::cout << "解包完成：" << r.entries_read << " 个文件，"
                           << r.bytes_read << " 字节。\n";

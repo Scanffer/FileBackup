@@ -155,3 +155,73 @@ TEST_CASE("pack falls back to raw storage for incompressible bytes", "[pack]") {
     std::error_code ec;
     fs::remove_all(base, ec);
 }
+
+TEST_CASE("pack/unpack encrypted archives (AES/ChaCha/RC4)", "[pack][crypto]") {
+    const fs::path base = fresh_temp_dir();
+    const fs::path src = base / "src";
+    const std::string repetitive = make_repetitive(12000);
+    write_text(src / "a.txt", repetitive);
+    write_text(src / "sub" / "b.txt", "encrypted nested payload");
+    write_text(src / "中文.txt", "中文内容加密测试。\n");
+
+    const std::string password = "P@ss-中文-123";
+    for (const backup::EncryptionId enc :
+         {backup::EncryptionId::Aes256Cbc,
+          backup::EncryptionId::ChaCha20Poly1305,
+          backup::EncryptionId::Rc4}) {
+        CAPTURE(backup::to_string(enc));
+        const fs::path archive =
+            base / (std::string("enc-") + backup::to_string(enc) + ".vbak");
+
+        backup::PackOptions options;
+        options.src = src;
+        options.archive = archive;
+        options.compression = backup::CompressionId::Deflate;
+        options.encryption = enc;
+        options.password = password;
+
+        const backup::PackResult packed = backup::pack_directory(options);
+        REQUIRE(packed.entries_written == 3);
+
+        backup::UnpackOptions unpack;
+        unpack.archive = archive;
+        unpack.dst = base / (std::string("out-") + backup::to_string(enc));
+        unpack.password = password;
+
+        const backup::UnpackResult restored = backup::unpack_archive(unpack);
+        REQUIRE(restored.entries_read == 3);
+        REQUIRE(read_text(unpack.dst / "a.txt") == repetitive);
+        REQUIRE(read_text(unpack.dst / "sub" / "b.txt") ==
+                "encrypted nested payload");
+        REQUIRE(read_text(unpack.dst / "中文.txt") ==
+                "中文内容加密测试。\n");
+
+        SECTION("missing password is rejected") {
+            backup::UnpackOptions bad = unpack;
+            bad.password.clear();
+            REQUIRE_THROWS(backup::unpack_archive(bad));
+        }
+
+        SECTION("wrong password is rejected") {
+            backup::UnpackOptions bad = unpack;
+            bad.password = "wrong-password";
+            REQUIRE_THROWS(backup::unpack_archive(bad));
+        }
+
+        SECTION("tampered archive is rejected") {
+            std::string bytes = read_text(archive);
+            REQUIRE(!bytes.empty());
+            bytes.back() = static_cast<char>(bytes.back() ^ 0x7F);
+            const fs::path tampered = base / "tampered.vbak";
+            write_text(tampered, bytes);
+
+            backup::UnpackOptions bad = unpack;
+            bad.archive = tampered;
+            REQUIRE_THROWS(backup::unpack_archive(bad));
+        }
+    }
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
