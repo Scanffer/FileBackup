@@ -15,6 +15,9 @@
 #include <string>
 #include <thread>
 
+#include <nlohmann/json.hpp>
+
+#include "algorithm.h"
 #include "backup.h"
 #include "fs_utils.h"
 #include "pack.h"
@@ -144,6 +147,55 @@ std::string count_message(const char* verb, std::uintmax_t files,
            std::to_string(bytes) + " 字节。\n";
 }
 
+/// /api/algorithms 的响应：压缩/加密/打包算法清单。
+///
+/// available 表示当前构建里是否真的实现了（make_compressor/make_cipher
+/// 返回非空）。前端据此只把可用的算法放进下拉框，避免用户选了才报错。
+nlohmann::json algorithms_payload() {
+    nlohmann::json root = nlohmann::json::object();
+
+    root["compress"] = nlohmann::json::array();
+    for (const AlgorithmInfo& info : compression_algorithms()) {
+        const auto id = compression_from_string(info.id);
+        const bool available =
+            info.id == "none" || (id && make_compressor(*id) != nullptr);
+        root["compress"].push_back({{"id", info.id},
+                                    {"label", info.label},
+                                    {"has_level", info.has_level},
+                                    {"self_made", info.self_made},
+                                    {"note", info.note},
+                                    {"available", available}});
+    }
+
+    root["encrypt"] = nlohmann::json::array();
+    for (const AlgorithmInfo& info : encryption_algorithms()) {
+        const auto id = encryption_from_string(info.id);
+        const bool available =
+            info.id == "none" || (id && make_cipher(*id) != nullptr);
+        root["encrypt"].push_back({{"id", info.id},
+                                   {"label", info.label},
+                                   {"self_made", info.self_made},
+                                   {"note", info.note},
+                                   {"available", available}});
+    }
+
+    root["pack"] = nlohmann::json::array();
+    for (const AlgorithmInfo& info : pack_algorithms()) {
+        root["pack"].push_back({{"id", info.id},
+                                {"label", info.label},
+                                {"self_made", info.self_made},
+                                {"note", info.note},
+                                {"available", info.id == "vbak"}});
+    }
+    return root;
+}
+
+void reply_json(httplib::Response& res, int status,
+                const nlohmann::json& body) {
+    res.status = status;
+    res.set_content(body.dump(), "application/json; charset=utf-8");
+}
+
 void register_routes(httplib::Server& svr) {
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
         // 三参数版：省掉一次 std::string 构造，并去掉尾部 NUL。
@@ -155,6 +207,12 @@ void register_routes(httplib::Server& svr) {
         reply_text(res, 200, "ok");
     });
 
+    // 算法清单。前端下拉框据此生成，只有 available=true 的才会出现。
+    svr.Get("/api/algorithms",
+            [](const httplib::Request&, httplib::Response& res) {
+                reply_json(res, 200, algorithms_payload());
+            });
+
     // 字段与语义刻意和 CLI 对齐（cli/main.cpp 的 backup 分支）：
     // 指定了 pack 时 dst 是归档文件路径，否则 dst 是目标目录。
     // 这样 GUI 和 CLI 走的是同一批 backup:: 函数，行为不可能漂移。
@@ -164,15 +222,49 @@ void register_routes(httplib::Server& svr) {
                  if (!require_param(req, "src", src, res)) return;
                  if (!require_param(req, "dst", dst, res)) return;
 
+                 CompressionId compression = CompressionId::None;
+                 int level = 6;
+                 if (req.has_param("compress") &&
+                     !req.get_param_value("compress").empty()) {
+                     const auto id = compression_from_string(
+                         req.get_param_value("compress"));
+                     if (!id) {
+                         reply_text(res, 400,
+                                    "不支持的压缩算法：" +
+                                        req.get_param_value("compress"));
+                         return;
+                     }
+                     compression = *id;
+                 }
+                 if (req.has_param("level") &&
+                     !req.get_param_value("level").empty()) {
+                     try {
+                         level = std::stoi(req.get_param_value("level"));
+                     } catch (const std::exception&) {
+                         reply_text(res, 400, "无效的压缩级别");
+                         return;
+                     }
+                     if (level < 1 || level > 19) {
+                         reply_text(res, 400, "压缩级别超出范围（1-19）");
+                         return;
+                     }
+                 }
+
                  std::lock_guard<std::mutex> lock(g_fs_mutex);
                  try {
                      if (!req.get_param_value("pack").empty()) {
                          PackOptions o;
                          o.src = path_from_u8(src);
                          o.archive = path_from_u8(dst);
+                         o.compression = compression;
+                         o.compression_level = level;
                          const PackResult r = pack_directory(o);
+                         const std::string verb =
+                             "打包完成（" +
+                             std::string(to_string(compression)) + "）";
                          reply_text(res, 200,
-                                    count_message("打包完成", r.entries_written,
+                                    count_message(verb.c_str(),
+                                                  r.entries_written,
                                                   r.bytes_written));
                      } else {
                          MirrorOptions o;

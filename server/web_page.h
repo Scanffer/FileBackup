@@ -326,6 +326,43 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
+  /* ---- 压缩方式（仅打包模式显示） ------------------------------------ */
+
+  .compress-line {
+    display: flex;
+    gap: .5rem;
+    align-items: stretch;
+  }
+
+  select,
+  input[type="number"] {
+    height: 2rem;
+    padding: 0 .5rem;
+    font-family: inherit;
+    font-size: .8125rem;
+    color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .25rem;
+    color-scheme: dark;
+  }
+
+  select { flex: 1 1 auto; min-width: 0; }
+  input[type="number"] { flex: 0 0 5rem; width: 5rem; }
+
+  select:hover,
+  input[type="number"]:hover { border-color: #4D4D4D; }
+
+  select:focus-visible,
+  input[type="number"]:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  select:disabled,
+  input[type="number"]:disabled { opacity: .6; }
+
   .hint {
     margin: 0;
     font-size: .75rem;
@@ -598,6 +635,20 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
         </div>
       </div>
 
+      <div class="row" id="row-compress" hidden>
+        <span class="lbl">压缩方式</span>
+        <div class="control">
+          <div class="compress-line">
+            <select id="compress" aria-label="压缩算法"></select>
+            <input type="number" id="level" min="1" max="19" value="6"
+                   title="压缩级别" aria-label="压缩级别">
+          </div>
+          <p class="hint">
+            仅对单容器 .vbak 生效；级别越高越慢、压缩率通常越好。
+          </p>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -630,8 +681,79 @@ function postWindowCommand(command) {
   if (hasNativeChrome) webviewHost.postMessage(command);
 }
 
+// ---- 压缩算法下拉框 ------------------------------------------------------
+// 清单从 /api/algorithms 拉取；只展示 available=true 的算法。拉不到时用
+// 一个最小兜底清单，页面仍然可用。
+let compressAlgorithms = [
+  { id: "none", label: "不压缩", has_level: false, self_made: false },
+  { id: "deflate", label: "DEFLATE", has_level: true, self_made: true },
+];
+
+function currentCompressionInfo() {
+  return (
+    compressAlgorithms.find((algo) => algo.id === state.compression) || {
+      id: "none",
+      label: "不压缩",
+      has_level: false,
+      self_made: false,
+    }
+  );
+}
+
+function syncCompressionControls() {
+  const info = currentCompressionInfo();
+  const level = $("level");
+  level.disabled = !info.has_level;
+  level.title = info.has_level ? "压缩级别" : "该算法没有压缩级别";
+}
+
+function fillCompressionOptions() {
+  const select = $("compress");
+  select.innerHTML = "";
+  for (const algo of compressAlgorithms) {
+    const option = document.createElement("option");
+    option.value = algo.id;
+    let label = algo.label;
+    if (algo.self_made) label += "（自研）";
+    else if (algo.id !== "none") label += "（库）";
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  if (!compressAlgorithms.some((algo) => algo.id === state.compression)) {
+    // 默认优先选 DEFLATE（可用时），备份工具的合理默认是压一下。
+    state.compression = compressAlgorithms.some(
+      (algo) => algo.id === "deflate"
+    )
+      ? "deflate"
+      : (compressAlgorithms[0] ? compressAlgorithms[0].id : "none");
+  }
+  select.value = state.compression;
+  syncCompressionControls();
+}
+
+async function loadAlgorithms() {
+  try {
+    const resp = await fetch("/api/algorithms");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    const list = (data.compress || []).filter(
+      (algo) => algo.available !== false
+    );
+    if (list.length > 0) compressAlgorithms = list;
+  } catch (err) {
+    // 后端异常时保留兜底清单，不阻塞界面。
+  }
+  fillCompressionOptions();
+}
+
 // mode: backup | restore；kind: archive | mirror（仅还原时有效）；pack：是否打包
-const state = { mode: "backup", kind: "archive", pack: false };
+const state = {
+  mode: "backup",
+  kind: "archive",
+  pack: false,
+  compression: "deflate",
+  level: 6,
+};
 
 // 当前状态下界面上的每个词都从这里取，避免同一个动作在标签、按钮和状态栏
 // 里叫三个不同的名字。
@@ -653,6 +775,7 @@ function describe() {
         : "目标目录会得到源目录的完整副本；已存在的文件会跳过。",
       kindHidden: true,
       packHidden: false,
+      compressHidden: !pack,
     };
   }
 
@@ -670,6 +793,7 @@ function describe() {
     dstHint: "文件会恢复到该目录；子目录不存在时会自动创建。",
     kindHidden: false,
     packHidden: true,
+    compressHidden: true,
   };
 }
 
@@ -691,6 +815,8 @@ function render() {
 
   $("row-kind").hidden = d.kindHidden;
   $("row-pack").hidden = d.packHidden;
+  $("row-compress").hidden = d.compressHidden;
+  syncCompressionControls();
 
   $("src-label").textContent = d.srcLabel;
   $("dst-label").textContent = d.dstLabel;
@@ -723,6 +849,16 @@ for (const radio of document.querySelectorAll('input[name="kind"]')) {
 $("pack").addEventListener("change", (e) => {
   state.pack = e.target.checked;
   render();
+});
+
+$("compress").addEventListener("change", (e) => {
+  state.compression = e.target.value;
+  syncCompressionControls();
+});
+
+$("level").addEventListener("input", (e) => {
+  const value = Number.parseInt(e.target.value, 10);
+  if (!Number.isNaN(value)) state.level = value;
 });
 
 // ---- 窗口按钮与标题栏拖拽（仅 WebView2 宿主模式）------------------------
@@ -833,7 +969,18 @@ $("form").addEventListener("submit", async (e) => {
   if (state.mode === "backup") {
     url = "/api/backup";
     params = { src, dst };
-    if (state.pack) params.pack = "vbak";
+    if (state.pack) {
+      params.pack = "vbak";
+      if (state.compression !== "none") {
+        params.compress = state.compression;
+        const info = currentCompressionInfo();
+        if (info.has_level) {
+          const raw = Number.parseInt($("level").value, 10);
+          const level = Number.isFinite(raw) ? raw : state.level;
+          params.level = String(Math.min(19, Math.max(1, level)));
+        }
+      }
+    }
   } else {
     url = "/api/restore";
     params = { dst };
@@ -865,6 +1012,7 @@ $("form").addEventListener("submit", async (e) => {
 });
 
 render();
+loadAlgorithms();
 
 // 打开窗口就能直接输入路径，不用先点一下输入框。
 $("src").focus();

@@ -18,6 +18,7 @@
 #include "http_server.h"
 #include "pack.h"
 #include "version.h"
+#include "algorithm.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -242,10 +243,13 @@ int main(int argc, char** argv) {
         const auto src = find_opt(argc, argv, 2, L"--src");
         const auto dst = find_opt(argc, argv, 2, L"--dst");
         const auto pack = find_opt(argc, argv, 2, L"--pack");
+        const auto compress = find_opt(argc, argv, 2, L"--compress");
+        const auto level = find_opt(argc, argv, 2, L"--level");
 
         if (!src || !dst) {
             std::cerr << "用法：FileBackup backup --src <目录> --dst <目标>\n"
-                         "      加 --pack vbak 打包成单文件归档\n";
+                         "      加 --pack vbak 打包成单文件归档，可再指定\n"
+                         "      --compress deflate --level 6\n";
             return 1;
         }
 
@@ -259,10 +263,45 @@ int main(int argc, char** argv) {
                 backup::PackOptions o;
                 o.src = *src;
                 o.archive = *dst;  // 打包时 --dst 是归档文件路径
+
+                if (compress) {
+                    const auto id =
+                        backup::compression_from_string(narrow_ascii(*compress));
+                    if (!id) {
+                        std::cerr << "不支持的压缩算法："
+                                  << narrow_ascii(*compress) << "\n";
+                        return 1;
+                    }
+                    o.compression = *id;
+                }
+                if (level) {
+                    try {
+                        o.compression_level =
+                            std::stoi(narrow_ascii(*level));
+                    } catch (const std::exception&) {
+                        std::cerr << "无效的压缩级别："
+                                  << narrow_ascii(*level) << "\n";
+                        return 1;
+                    }
+                    if (o.compression_level < 1 ||
+                        o.compression_level > 19) {
+                        std::cerr << "压缩级别超出范围（1-19）："
+                                  << o.compression_level << "\n";
+                        return 1;
+                    }
+                }
+
                 const backup::PackResult r = backup::pack_directory(o);
-                std::cout << "打包完成：" << r.entries_written << " 个文件，"
+                std::cout << "打包完成（"
+                          << backup::to_string(o.compression) << "）："
+                          << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
             } else {
+                if (compress || level) {
+                    std::cerr << "--compress / --level 只在 --pack vbak "
+                                 "模式下生效。\n";
+                    return 1;
+                }
                 backup::MirrorOptions o;
                 o.src = *src;
                 o.dst = *dst;
