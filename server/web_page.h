@@ -643,7 +643,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
             <input type="number" id="level" min="1" max="19" value="6"
                    title="压缩级别" aria-label="压缩级别">
           </div>
-          <p class="hint">
+          <p class="hint" id="compress-hint">
             仅对单容器 .vbak 生效；级别越高越慢、压缩率通常越好。
           </p>
         </div>
@@ -702,8 +702,10 @@ function currentCompressionInfo() {
 
 function syncCompressionControls() {
   const info = currentCompressionInfo();
+  const enabled = state.pack;
+  $("compress").disabled = !enabled;
   const level = $("level");
-  level.disabled = !info.has_level;
+  level.disabled = !enabled || !info.has_level;
   level.title = info.has_level ? "压缩级别" : "该算法没有压缩级别";
 }
 
@@ -775,7 +777,7 @@ function describe() {
         : "目标目录会得到源目录的完整副本；已存在的文件会跳过。",
       kindHidden: true,
       packHidden: false,
-      compressHidden: !pack,
+      compressHidden: false,
     };
   }
 
@@ -816,6 +818,9 @@ function render() {
   $("row-kind").hidden = d.kindHidden;
   $("row-pack").hidden = d.packHidden;
   $("row-compress").hidden = d.compressHidden;
+  $("compress-hint").textContent = state.pack
+    ? "级别越高越慢、压缩率通常越好。"
+    : "仅勾选「打包为单个 .vbak 归档文件」时生效；目录镜像模式按原样复制文件。";
   syncCompressionControls();
 
   $("src-label").textContent = d.srcLabel;
