@@ -1,10 +1,14 @@
-// FileBackup —— 命令行入口
+// FileBackup-cli —— 命令行入口
 //
-// 接口设计见 README §7.1。当前建立命令契约（子命令名、参数风格、退出码），
-// 具体实现在后续里程碑填入：M1 做 backup/restore，M6 做 list/verify。
+// 和图形界面是**两个独立的 exe**：
+//   FileBackup.exe      GUI（Windows 子系统，双击启动，无控制台）
+//   FileBackup-cli.exe  CLI（控制台子系统，可被脚本调用、能捕获输出）
+//
+// 两个程序共享 core 备份引擎；GUI 通过 backup_server 暴露 HTTP 接口。
+// 这样既不会有"双击 GUI 弹出一个终端窗口"的问题，CLI 的 stdout/stderr
+// 也仍然是标准控制台语义。
 //
 // 分层原则（README §4）：本文件只做参数解析与输出，不包含任何备份逻辑。
-// 业务逻辑全部在 backup_core 里，以便被 CLI 与 server 共同链接。
 
 #include <cstdint>
 #include <filesystem>
@@ -13,12 +17,11 @@
 #include <string>
 #include <vector>
 
+#include "algorithm.h"
 #include "backup.h"
 #include "fs_utils.h"
-#include "http_server.h"
 #include "pack.h"
 #include "version.h"
-#include "algorithm.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -28,36 +31,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <shellapi.h>  // ShellExecuteW —— 拉起同目录的 GUI 程序
 #endif
 
 namespace {
-
-/// 双击启动时（console 子系统程序），Windows 会先新建一个控制台窗口。
-/// GUI 模式不需要它，直接隐藏。
-///
-/// 只在「这个控制台上只挂着当前进程」时隐藏：如果是从已有终端里启动，
-/// 控制台里还有父 shell，隐藏会把用户自己的终端窗口一起藏掉。
-void hide_console_for_gui() {
-#ifdef _WIN32
-    const HWND console = GetConsoleWindow();
-    if (console == nullptr) return;
-    DWORD pids[4] = {};
-    const DWORD count = GetConsoleProcessList(pids, 4);
-    if (count == 1) ShowWindow(console, SW_HIDE);
-#endif
-}
-
-/// 声明进程为「每显示器 DPI 感知」。
-///
-/// **必须在创建任何窗口、初始化 WebView2 之前调用。** 否则 Windows 会把
-/// 整个窗口当成 96 DPI 的位图整体拉伸：125% 缩放下文字会明显发虚。
-/// WebView2 本身按 DPI 渲染，但它需要宿主先告诉系统自己的缩放比例。
-/// PerMonitorV2 还负责窗口跨不同缩放比例的显示器时的重新布局。
-void enable_high_dpi() {
-#ifdef _WIN32
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-#endif
-}
 
 /// Windows 控制台默认使用系统代码页（简体中文为 GBK），而本程序内部
 /// 一律用 UTF-8，两者不一致时中文会显示成乱码。启动时切到 UTF-8。
@@ -91,92 +68,73 @@ std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
     return std::nullopt;
 }
 
-/// 解析 Web GUI 的启动参数。--port 不合法时返回 nullopt（已打印原因）。
-std::optional<backup::WebOptions> parse_web_options(int argc, wchar_t** argv) {
-    backup::WebOptions o;
+/// 启动同目录下的图形界面程序。
+bool launch_gui_app() {
+#ifdef _WIN32
+    wchar_t self[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, self, MAX_PATH) == 0) return false;
 
-    if (const auto raw = find_opt(argc, argv, 2, L"--port")) {
-        // narrow_ascii 只用于这种「我们自己定的 ASCII 参数」，绝不用于路径。
-        const std::string s = narrow_ascii(*raw);
-        try {
-            o.port = std::stoi(s);
-        } catch (const std::exception&) {
-            std::cerr << "无效的端口：" << s << "\n";
-            return std::nullopt;
-        }
-        if (o.port < 1 || o.port > 65535) {
-            std::cerr << "端口超出范围（1-65535）：" << o.port << "\n";
-            return std::nullopt;
-        }
+    const std::filesystem::path gui =
+        std::filesystem::path(self).parent_path() / L"FileBackup.exe";
+    std::error_code ec;
+    if (!std::filesystem::exists(gui, ec)) {
+        std::cerr << "找不到图形界面程序：" << gui.u8string()
+                  << "\n请确认 FileBackup.exe 与 FileBackup-cli.exe 在同一目录。\n";
+        return false;
     }
 
-    // --browser 强制走浏览器，不开原生窗口。调界面时比 WebView2 好用 ——
-    // 浏览器有 F12，WebView2 默认没有。
-    o.native_window = !find_opt(argc, argv, 2, L"--browser");
-
-    // --no-browser 不是可有可无的开关：没有它，每次 curl 做接口测试
-    // 都会弹出一个窗口。
-    o.open_browser = !find_opt(argc, argv, 2, L"--no-browser");
-
-    return o;
+    const HINSTANCE r = ShellExecuteW(nullptr, L"open", gui.c_str(), nullptr,
+                                      nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(r) <= 32) {
+        std::cerr << "启动图形界面失败（错误码 "
+                  << reinterpret_cast<INT_PTR>(r) << "）\n";
+        return false;
+    }
+    std::cout << "已启动图形界面：" << gui.u8string() << "\n";
+    return true;
+#else
+    std::cerr << "当前平台没有图形界面程序。\n";
+    return false;
+#endif
 }
 
 void print_usage(std::ostream& os) {
-    os << "FileBackup —— 文件备份软件\n"
+    os << "FileBackup-cli —— 文件备份软件（命令行）\n"
           "\n"
           "用法：\n"
-          "  FileBackup <命令> [选项]\n"
-          "  FileBackup                      不带参数 = 双击启动图形界面\n"
+          "  FileBackup-cli <命令> [选项]\n"
           "\n"
           "命令：\n"
-          "  gui       打开图形界面（独立窗口）\n"
           "  backup    备份目录树到指定位置\n"
           "  restore   将备份内容还原到指定位置\n"
-          "  list      列出归档内容\n"
-          "  verify    校验归档完整性\n"
+          "  list      列出归档内容（尚未实现）\n"
+          "  verify    校验归档完整性（尚未实现）\n"
+          "  gui       启动图形界面（同目录的 FileBackup.exe）\n"
           "\n"
           "通用选项：\n"
           "  -h, --help       显示本帮助\n"
           "  -v, --version    显示版本\n"
           "\n"
-          "图形界面选项（仅 gui 子命令）：\n"
-          "  --port <端口>    起始端口，默认 8080；被占用时自动往后试\n"
-          "  --browser        用浏览器打开，不开原生窗口（浏览器有 F12，调界面时方便）\n"
-          "  --no-browser     什么都不开，只起服务（调接口时用）\n"
-          "\n"
-          "开发调试（M1 期间用于检查目录遍历，非 README §7.1 的正式接口）：\n"
+          "开发调试：\n"
           "  scan <目录>      列出该目录树下的所有文件\n"
           "\n"
-          "示例（详见 README §7.1）：\n"
-          "  FileBackup backup  --src ./docs --dst ./bak/docs.vbak \\\n"
-          "                     --pack vbak --compress zstd --level 15 \\\n"
-          "                     --encrypt aes256cbc --password ******\n"
-          "  FileBackup restore --archive ./bak/docs.vbak --dst ./restored\n"
-          "  FileBackup list    --archive ./bak/docs.vbak\n"
-          "  FileBackup verify  --archive ./bak/docs.vbak\n"
+          "示例：\n"
+          "  FileBackup-cli backup  --src ./docs --dst ./bak/docs.vbak \\\n"
+          "                         --pack vbak --compress deflate --level 6\n"
+          "  FileBackup-cli restore --archive ./bak/docs.vbak --dst ./restored\n"
           "\n"
-          "两种输出模式（README §2.4）：\n"
-          "  目录镜像  备份到目录          —— 基础必做，M1\n"
-          "  单容器    备份到单个归档文件  —— 备选扩展，M6\n";
+          "图形界面是独立程序 FileBackup.exe，双击启动；调试用参数：\n"
+          "  FileBackup.exe --port 8080 --browser --no-browser\n";
 }
 
 void print_version() {
-    std::cout << "FileBackup " << backup::version() << "\n";
+    std::cout << "FileBackup " << backup::version() << "（CLI）\n";
 }
 
 /// 尚未实现的子命令给出明确提示，而不是静默失败。
-/// 对应里程碑标注出来，方便演示时解释进度。
 void report_not_implemented(const std::wstring& command) {
-    std::string milestone;
-    if (command == L"backup" || command == L"restore") {
-        milestone = "M1（目录镜像备份 / 还原）";
-    } else {
-        milestone = "M6（打包解包 / 单容器格式）";
-    }
-
     std::cerr << "命令 '" << narrow_ascii(command) << "' 尚未实现。\n"
-              << "计划于 " << milestone
-              << " 交付，见 README §10 里程碑计划。\n";
+              << "归档 list/verify 会在 VBAK v2 完整归档模块完成后提供。\n";
 }
 
 }  // namespace
@@ -193,35 +151,25 @@ void report_not_implemented(const std::wstring& command) {
 // 不需要任何手工转码。内部一律用宽字符构造路径，输出时用
 // generic_u8string() 转成 UTF-8 交给已切到 CP_UTF8 的控制台。
 //
-// 代价：MinGW 下链接时要用 -municode（见根 CMakeLists.txt）。
+// 代价：MinGW 下链接时要用 -municode（见 cli/CMakeLists.txt）。
 // 将来若移植到 Linux，把 wmain 换回 main 即可，其余代码不用动。
 #ifdef _WIN32
 int wmain(int argc, wchar_t** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
-    enable_high_dpi();
     enable_utf8_console();
 
-    // 启动 Web GUI。捕获引用是安全的：这个 lambda 只在 wmain 的作用域内调用。
-    const auto launch_gui = [&argc, &argv]() -> int {
-        const auto opts = parse_web_options(argc, argv);
-        if (!opts) return 1;
-        return backup::run_web_server(*opts);
-    };
-
-    // 无参数 = 双击启动，直接开界面。（早期版本这里是打印用法并返回 1。）
     if (argc < 2) {
-        hide_console_for_gui();
-        return launch_gui();
+        print_usage(std::cout);
+        return 0;
     }
 
     const std::wstring command = argv[1];
 
-    // 显式启动界面，便于带 --port / --no-browser 调用。
+    // 兼容旧习惯：从 CLI 里也能把 GUI 拉起来。
     if (command == L"gui" || command == L"--gui" || command == L"web") {
-        hide_console_for_gui();
-        return launch_gui();
+        return launch_gui_app() ? 0 : 1;
     }
 
     if (command == L"-h" || command == L"--help") {
@@ -235,10 +183,9 @@ int main(int argc, char** argv) {
     }
 
     // 开发调试命令：验证 core 的目录遍历是否接进来了。
-    // 不属于 README §7.1 的正式 CLI 契约，M1 完成备份功能后可移除。
     if (command == L"scan") {
         if (argc < 3) {
-            std::cerr << "用法：FileBackup scan <目录>\n";
+            std::cerr << "用法：FileBackup-cli scan <目录>\n";
             return 1;
         }
 
@@ -264,7 +211,7 @@ int main(int argc, char** argv) {
         const auto level = find_opt(argc, argv, 2, L"--level");
 
         if (!src || !dst) {
-            std::cerr << "用法：FileBackup backup --src <目录> --dst <目标>\n"
+            std::cerr << "用法：FileBackup-cli backup --src <目录> --dst <目标>\n"
                          "      加 --pack vbak 打包成单文件归档，可再指定\n"
                          "      --compress deflate --level 6\n";
             return 1;
@@ -282,8 +229,8 @@ int main(int argc, char** argv) {
                 o.archive = *dst;  // 打包时 --dst 是归档文件路径
 
                 if (compress) {
-                    const auto id =
-                        backup::compression_from_string(narrow_ascii(*compress));
+                    const auto id = backup::compression_from_string(
+                        narrow_ascii(*compress));
                     if (!id) {
                         std::cerr << "不支持的压缩算法："
                                   << narrow_ascii(*compress) << "\n";
@@ -293,8 +240,7 @@ int main(int argc, char** argv) {
                 }
                 if (level) {
                     try {
-                        o.compression_level =
-                            std::stoi(narrow_ascii(*level));
+                        o.compression_level = std::stoi(narrow_ascii(*level));
                     } catch (const std::exception&) {
                         std::cerr << "无效的压缩级别："
                                   << narrow_ascii(*level) << "\n";
@@ -309,9 +255,8 @@ int main(int argc, char** argv) {
                 }
 
                 const backup::PackResult r = backup::pack_directory(o);
-                std::cout << "打包完成（"
-                          << backup::to_string(o.compression) << "）："
-                          << r.entries_written << " 个文件，"
+                std::cout << "打包完成（" << backup::to_string(o.compression)
+                          << "）：" << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
             } else {
                 if (compress || level) {
@@ -344,8 +289,8 @@ int main(int argc, char** argv) {
 
         if (!dst || (!archive && !src)) {
             std::cerr
-                << "用法：FileBackup restore --archive <归档> --dst <目录>\n"
-                   "      或 FileBackup restore --src <备份目录> --dst "
+                << "用法：FileBackup-cli restore --archive <归档> --dst <目录>\n"
+                   "      或 FileBackup-cli restore --src <备份目录> --dst "
                    "<目录>\n";
             return 1;
         }

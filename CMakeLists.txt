@@ -52,7 +52,10 @@ endif()
 add_subdirectory(third_party)  # httplib / WebView2 / zstd / json / Catch2
 add_subdirectory(core)         # backup_core 静态库：备份引擎
 add_subdirectory(server)       # backup_server 静态库：Web GUI 的 HTTP 层（无 main）
-add_subdirectory(cli)          # FileBackup.exe：唯一入口，链接 core + server
+add_subdirectory(cli)          # FileBackup-cli.exe：命令行入口
+if(WIN32)
+    add_subdirectory(gui)      # FileBackup.exe：图形界面入口（无控制台）
+endif()
 
 enable_testing()
 add_subdirectory(tests)        # backup_tests：Catch2 单元测试
