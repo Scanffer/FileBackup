@@ -700,6 +700,15 @@ function currentCompressionInfo() {
   );
 }
 
+/// 各压缩算法支持的级别范围。当前自研 DEFLATE 是 1–9；
+/// 以后接入 zstd 时是 1–19。级别不是"压缩几次"，而是搜索力度：
+/// 越高越慢，通常文件越小。
+function compressionLevelRange(info) {
+  if (info.id === "deflate") return [1, 9];
+  if (info.id === "zstd") return [1, 19];
+  return [1, 1];
+}
+
 function syncCompressionControls() {
   const info = currentCompressionInfo();
   const enabled = state.pack;
@@ -707,6 +716,16 @@ function syncCompressionControls() {
   const level = $("level");
   level.disabled = !enabled || !info.has_level;
   level.title = info.has_level ? "压缩级别" : "该算法没有压缩级别";
+
+  const [minLevel, maxLevel] = compressionLevelRange(info);
+  level.min = String(minLevel);
+  level.max = String(maxLevel);
+  const value = Number.parseInt(level.value, 10);
+  if (!Number.isFinite(value)) {
+    level.value = String(minLevel);
+  } else {
+    level.value = String(Math.min(maxLevel, Math.max(minLevel, value)));
+  }
 }
 
 function fillCompressionOptions() {
@@ -982,7 +1001,10 @@ $("form").addEventListener("submit", async (e) => {
         if (info.has_level) {
           const raw = Number.parseInt($("level").value, 10);
           const level = Number.isFinite(raw) ? raw : state.level;
-          params.level = String(Math.min(19, Math.max(1, level)));
+          const [minLevel, maxLevel] = compressionLevelRange(info);
+          params.level = String(
+            Math.min(maxLevel, Math.max(minLevel, level))
+          );
         }
       }
     }

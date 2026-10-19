@@ -32,6 +32,21 @@
 
 namespace {
 
+/// 双击启动时（console 子系统程序），Windows 会先新建一个控制台窗口。
+/// GUI 模式不需要它，直接隐藏。
+///
+/// 只在「这个控制台上只挂着当前进程」时隐藏：如果是从已有终端里启动，
+/// 控制台里还有父 shell，隐藏会把用户自己的终端窗口一起藏掉。
+void hide_console_for_gui() {
+#ifdef _WIN32
+    const HWND console = GetConsoleWindow();
+    if (console == nullptr) return;
+    DWORD pids[4] = {};
+    const DWORD count = GetConsoleProcessList(pids, 4);
+    if (count == 1) ShowWindow(console, SW_HIDE);
+#endif
+}
+
 /// 声明进程为「每显示器 DPI 感知」。
 ///
 /// **必须在创建任何窗口、初始化 WebView2 之前调用。** 否则 Windows 会把
@@ -197,6 +212,7 @@ int main(int argc, char** argv) {
 
     // 无参数 = 双击启动，直接开界面。（早期版本这里是打印用法并返回 1。）
     if (argc < 2) {
+        hide_console_for_gui();
         return launch_gui();
     }
 
@@ -204,6 +220,7 @@ int main(int argc, char** argv) {
 
     // 显式启动界面，便于带 --port / --no-browser 调用。
     if (command == L"gui" || command == L"--gui" || command == L"web") {
+        hide_console_for_gui();
         return launch_gui();
     }
 
