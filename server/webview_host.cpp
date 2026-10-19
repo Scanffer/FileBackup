@@ -23,6 +23,7 @@
 
 #include <windows.h>
 #include <dwmapi.h>   // DwmSetWindowAttribute：让系统标题栏跟随页面切深色
+#include <shellapi.h>  // ShellExecuteW：结果区「打开目标文件夹」
 #include <shobjidl.h>  // IFileOpenDialog / IFileSaveDialog：原生选择框
 
 #include <objbase.h>  // CoInitializeEx
@@ -30,6 +31,8 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 #include "WebView2.h"
 
@@ -191,6 +194,50 @@ WindowState g_win;
 constexpr int kExitInitFailed = 1;
 
 // ---------------------------------------------------------------------------
+// 给页面回消息（JSON）
+//
+// 页面消息的返回通道有两种：PostWebMessageAsString 让 JS 收到字符串，
+// PostWebMessageAsJson 让 JS 直接收到对象。宿主自己的事件（picked|...、
+// window:maximized）沿用字符串协议；页面发来的 JSON 命令（shell:*）用
+// JSON 对象回复，页面不用二次 JSON.parse。
+// ---------------------------------------------------------------------------
+
+/// UTF-8 -> UTF-16。页面传来的 JSON 文本是 UTF-8，Win32 API 一律宽字符。
+std::wstring Utf8ToWide(const std::string& text) {
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(),
+                                         static_cast<int>(text.size()),
+                                         nullptr, 0);
+    if (size <= 0) return {};
+    std::wstring out(static_cast<std::size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(),
+                        static_cast<int>(text.size()), out.data(), size);
+    return out;
+}
+
+/// UTF-16 -> UTF-8（把 JSON 命令文本转成 nlohmann 能解析的字符串）。
+std::string WideToUtf8(const std::wstring& text) {
+    if (text.empty()) return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.data(),
+                                         static_cast<int>(text.size()),
+                                         nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return {};
+    std::string out(static_cast<std::size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(),
+                        static_cast<int>(text.size()), out.data(), size,
+                        nullptr, nullptr);
+    return out;
+}
+
+/// 把一条 JSON 回给页面（JS 侧 e.data 是对象）。
+void ReplyJson(const nlohmann::json& payload) {
+    if (g_win.webview == nullptr) return;
+    const std::wstring text = Utf8ToWide(payload.dump());
+    if (text.empty()) return;
+    g_win.webview->PostWebMessageAsJson(text.c_str());
+}
+
+// ---------------------------------------------------------------------------
 // 原生文件 / 文件夹选择框
 //
 // 页面上的「浏览…」按钮发消息请求，宿主打开和资源管理器同款的选择框
@@ -293,12 +340,80 @@ void ReplyPicked(const std::wstring& path) {
     g_win.webview->PostWebMessageAsString(message.c_str());
 }
 
+// ---- 页面命令：shell:open-folder -----------------------------------------
+//
+// 页面把「结果卡片里要打开的目标文件夹」以 UTF-8 放进 JSON 命令发过来。
+// 这里校验它确实是存在的目录，再用资源管理器打开；失败回
+// {"cmd":"shell:open-folder","ok":false,"error":"..."}，页面把 error
+// 显示在结果卡片里 —— 不回错误码数字，用户看不懂。
+void OpenFolderAndReply(const std::string& path_utf8) {
+    const auto fail = [](const std::string& error) {
+        ReplyJson({{"cmd", "shell:open-folder"},
+                   {"ok", false},
+                   {"error", error}});
+    };
+
+    if (path_utf8.empty()) {
+        fail("路径为空");
+        return;
+    }
+    const std::wstring path = Utf8ToWide(path_utf8);
+    if (path.empty()) {
+        fail("路径编码无效");
+        return;
+    }
+
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        fail("文件夹不存在：" + path_utf8);
+        return;
+    }
+    if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        fail("不是文件夹：" + path_utf8);
+        return;
+    }
+
+    // ShellExecuteW 用 "open" 打开目录 = 资源管理器。返回值是伪装成
+    // HINSTANCE 的错误码，和 open_browser 里一样：> 32 才算成功。
+    const HINSTANCE result = ShellExecuteW(nullptr, L"open", path.c_str(),
+                                           nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32) {
+        fail("无法打开资源管理器（错误码 " +
+             std::to_string(reinterpret_cast<INT_PTR>(result)) + "）");
+        return;
+    }
+    ReplyJson({{"cmd", "shell:open-folder"}, {"ok", true}});
+}
+
+/// 处理页面发来的 JSON 对象命令（{cmd, ...}）。只认 shell:*，
+/// 其它一律忽略 —— 宿主不应该因为一条陌生消息就出错。
+void HandleJsonCommand(const std::string& json_text) {
+    const nlohmann::json message =
+        nlohmann::json::parse(json_text, nullptr, false);
+    if (message.is_discarded() || !message.is_object()) return;
+
+    const auto cmd = message.find("cmd");
+    if (cmd == message.end() || !cmd->is_string()) return;
+    const auto path = message.find("path");
+    const std::string path_text =
+        (path != message.end() && path->is_string())
+            ? path->get<std::string>()
+            : std::string();
+
+    if (cmd->get<std::string>() == "shell:open-folder") {
+        OpenFolderAndReply(path_text);
+    }
+}
+
 // ---- 页面 → 宿主的命令 ---------------------------------------------------
 //
 // 窗口没有系统标题栏（理由见 show_url 里的 kWindowStyle），所以拖拽、
 // 最小化、最大化、关闭都得由页面发起；「浏览…」也要宿主的原生对话框。
-// 页面用 window.chrome.webview.postMessage("...") 发字符串，这里翻译成
-// 对应的 Win32 / COM 调用。消息只认固定几步，其它一律忽略。
+// 页面消息有两种形态：
+//   1. 字符串命令（window:*、pick:*），翻译成对应的 Win32 / COM 调用；
+//   2. JSON 对象命令（{cmd:"shell:open-folder", path:"D:\\..."}），
+//      由 HandleJsonCommand 处理，回执是 JSON 对象。
+// 两者只认固定几步，其它一律忽略。
 class PageCommandHandler
     : public ComHandler<ICoreWebView2WebMessageReceivedEventHandler> {
 public:
@@ -311,13 +426,35 @@ public:
         ICoreWebView2WebMessageReceivedEventArgs* args) override {
         if (args == nullptr) return S_OK;
 
+        // 先按字符串取：页面大多数命令是字符串。
         LPWSTR raw = nullptr;
-        if (FAILED(args->TryGetWebMessageAsString(&raw)) || raw == nullptr) {
-            return S_OK;  // 页面只发字符串，JSON 消息不处理
+        if (SUCCEEDED(args->TryGetWebMessageAsString(&raw)) &&
+            raw != nullptr) {
+            const std::wstring command(raw);
+            CoTaskMemFree(raw);
+            HandleStringCommand(command);
+            return S_OK;
         }
-        const std::wstring command(raw);
-        CoTaskMemFree(raw);
 
+        // 不是字符串就按 JSON 对象取（页面用 postMessage({...}) 发的命令）。
+        raw = nullptr;
+        if (SUCCEEDED(args->get_WebMessageAsJson(&raw)) && raw != nullptr) {
+            const std::wstring json_wide(raw);
+            CoTaskMemFree(raw);
+            HandleJsonCommand(WideToUtf8(json_wide));
+        }
+        return S_OK;
+    }
+
+private:
+    void HandleStringCommand(const std::wstring& command) {
+        // 页面也可能 postMessage(JSON.stringify({...})) 发命令；不同
+        // WebView2 版本对「对象消息」的暴露方式不完全一样，这里统一兼容：
+        // 以 { 开头的字符串按 JSON 命令再解析一次。
+        if (!command.empty() && command.front() == L'{') {
+            HandleJsonCommand(WideToUtf8(command));
+            return;
+        }
         if (command == L"pick:folder") {
             ReplyPicked(PickOpenPath(hwnd_, true, false));
         } else if (command == L"pick:file") {
@@ -336,10 +473,8 @@ public:
         } else if (command == L"window:close") {
             PostMessageW(hwnd_, WM_CLOSE, 0, 0);
         }
-        return S_OK;
     }
 
-private:
     HWND hwnd_;
 };
 

@@ -709,6 +709,194 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     white-space: nowrap;
   }
 
+  /* ---- 目录树选择面板 -------------------------------------------------- */
+  /* 模态层盖住整页；面板本身是一列：标题 / 工具条 / 可滚动的树 / 状态栏。 */
+
+  .tree-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, .55);
+  }
+
+  .tree-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(34rem, 100%);
+    max-height: min(70vh, 40rem);
+    min-height: 18rem;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: .5rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .55);
+  }
+
+  .tree-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem .5rem .45rem .875rem;
+    background: var(--bar);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tree-title {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: .8125rem;
+    font-weight: 600;
+  }
+
+  .tree-close {
+    flex: 0 0 auto;
+    height: 1.75rem;
+    padding: 0 .6rem;
+  }
+
+  .tree-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .875rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tree-toolbar .btn-secondary {
+    flex: 0 0 auto;
+    height: 1.75rem;
+    padding: 0 .6rem;
+  }
+
+  .tree-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: .25rem .5rem;
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .25rem;
+    font-family: var(--mono);
+    font-size: .75rem;
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tree-list {
+    flex: 1 1 auto;
+    overflow: auto;
+    margin: 0;
+    padding: .35rem .35rem .5rem;
+    list-style: none;
+  }
+
+  .tree-node { min-width: 0; }
+
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: .15rem;
+    min-height: 1.75rem;
+    border-radius: .2rem;
+  }
+
+  .tree-row:hover { background: #2A2D2E; }
+
+  .tree-caret {
+    flex: 0 0 auto;
+    width: 1.5rem;
+    height: 1.75rem;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--ink-3);
+    font-family: var(--mono);
+    font-size: .8125rem;
+    cursor: pointer;
+  }
+
+  .tree-caret:hover { color: var(--ink); }
+  .tree-caret:disabled { opacity: .45; }
+
+  .tree-caret:focus-visible,
+  .tree-name:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  .tree-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 .35rem;
+    background: none;
+    border: 0;
+    font-family: var(--sans);
+    font-size: .8125rem;
+    color: var(--ink);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .tree-kids {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tree-empty {
+    padding: .25rem .9rem;
+    font-size: .75rem;
+    color: var(--ink-3);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .tree-empty.tree-error { color: var(--err); }
+
+  .tree-foot {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .45rem .875rem;
+    background: var(--bar);
+    border-top: 1px solid var(--border);
+  }
+
+  .tree-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: .75rem;
+    color: var(--ink-3);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .tree-status.is-err { color: var(--err); }
+
+  .tree-hint {
+    flex: 0 0 auto;
+    font-size: .6875rem;
+    color: #6E7681;
+  }
+
+  /* ---- 结果区：打开目标文件夹 ----------------------------------------- */
+
+  .result-open-error {
+    margin: .4rem 0 0;
+    font-size: .75rem;
+    color: var(--err);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   /* ---- 底部状态栏：左边是这次操作的结果，右边是唯一的主动作 ---------- */
 
   .statusbar {
@@ -825,8 +1013,9 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
 
     main { padding-top: 1rem; }
 
-    /* 窄窗口下路径和「复制路径」放不下同一行，折成两行。 */
+    /* 窄窗口下路径和按钮放不下同一行，折成两行。 */
     .result-path-line { flex-wrap: wrap; }
+    .result-open { margin-left: auto; }
     .result-copy { margin-left: auto; }
   }
 
@@ -920,6 +1109,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
                    spellcheck="false" placeholder="例如 D:\我的文档">
             <button type="button" class="browse" data-target="src"
                     title="在资源管理器中选择" hidden>浏览…</button>
+            <button type="button" class="btn-secondary tree-open"
+                    data-tree-target="src" title="打开目录树选择">目录树</button>
           </div>
           <p class="hint" id="src-hint"></p>
         </div>
@@ -933,6 +1124,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
                    spellcheck="false" placeholder="例如 D:\备份">
             <button type="button" class="browse" data-target="dst"
                     title="在资源管理器中选择" hidden>浏览…</button>
+            <button type="button" class="btn-secondary tree-open"
+                    data-tree-target="dst" title="打开目录树选择">目录树</button>
           </div>
           <p class="hint" id="dst-hint"></p>
         </div>
@@ -1027,9 +1220,12 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
         <div class="result-path-line" id="result-path-line" hidden>
           <span class="result-path-label">目标路径</span>
           <code class="result-path" id="result-path"></code>
+          <button type="button" class="btn-secondary result-open"
+                  id="result-open-folder" hidden>打开目标文件夹</button>
           <button type="button" class="btn-secondary result-copy"
                   id="result-copy">复制路径</button>
         </div>
+        <p class="result-open-error" id="result-open-error" hidden></p>
       </section>
 
       <section class="panel" id="tasks-panel" hidden aria-label="最近任务">
@@ -1055,6 +1251,32 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     </div>
   </div>
 </form>
+
+<!-- 目录树选择面板：数据来自 GET /api/fs/list，纯浏览器内实现，
+     所以浏览器回退模式（没有 WebView2 宿主）也能用。 -->
+<div class="tree-overlay" id="tree-overlay" hidden>
+  <div class="tree-dialog" role="dialog" aria-modal="true"
+       aria-labelledby="tree-title">
+    <div class="tree-head">
+      <h2 class="tree-title" id="tree-title">选择目录</h2>
+      <button type="button" class="btn-secondary tree-close" id="tree-close"
+              title="关闭（Esc）">关闭</button>
+    </div>
+    <div class="tree-toolbar">
+      <button type="button" class="btn-secondary" id="tree-up"
+              title="返回上一级目录">上一级</button>
+      <button type="button" class="btn-secondary" id="tree-refresh"
+              title="重新读取当前目录">刷新</button>
+      <code class="tree-path" id="tree-path" title="当前目录">此电脑</code>
+    </div>
+    <ul class="tree-list" id="tree-list" aria-label="目录树"></ul>
+    <div class="tree-foot">
+      <span class="tree-status" id="tree-status"
+            role="status" aria-live="polite"></span>
+      <span class="tree-hint">点击目录名填入 · ▸ 展开 · Esc 关闭</span>
+    </div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -1395,6 +1617,61 @@ function updateFilterStatus() {
   return result;
 }
 
+// ---- 通用 JSON 请求 / 路径工具 ------------------------------------------
+
+/// GET 一个 JSON 接口；非 2xx 时抛出带后端错误文本的异常。
+/// /api/fs/list 和 /api/tasks 都用它，错误提示统一从 error/message 取。
+async function fetchJson(url) {
+  const resp = await fetch(url, { cache: "no-store" });
+  const text = (await resp.text()).trim();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      data = null;
+    }
+  }
+  if (!resp.ok) {
+    let reason = "";
+    if (data && typeof data === "object") {
+      reason = errorText(data.error) || textOf(data.message);
+    }
+    if (!reason && text && text.length <= 300) reason = text;
+    throw new Error(reason || ("HTTP " + resp.status));
+  }
+  return data;
+}
+
+/// 取路径所在目录：文件路径返回父目录，目录路径返回它自己。
+/// 只做字符串处理，不假设路径真的存在；盘根（"D:\"）返回自身。
+function parentDirectory(path) {
+  let text = String(path == null ? "" : path).trim();
+  if (!text) return "";
+  text = text.replace(/[\\/]+$/, "");
+  if (!text) return "";
+  if (/^[A-Za-z]:$/.test(text)) return text.charAt(0) + ":\\";
+  const index = Math.max(text.lastIndexOf("\\"), text.lastIndexOf("/"));
+  if (index < 0) return "";
+  const parent = text.slice(0, index);
+  if (/^[A-Za-z]:$/.test(parent)) return parent + "\\";
+  return parent;
+}
+
+/// 目录树「上一级」用：盘符列表（path 为空）返回 null（按钮禁用）；
+/// 盘根返回空串（回到盘符列表）；其余返回父目录。
+function parentPathForTree(path) {
+  const text = String(path == null ? "" : path).trim();
+  if (!text) return null;
+  const trimmed = text.replace(/[\\/]+$/, "");
+  if (!trimmed) return null;
+  if (/^[A-Za-z]:$/.test(trimmed)) return "";
+  const index = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+  if (index < 0) return "";
+  const parent = trimmed.slice(0, index);
+  return /^[A-Za-z]:$/.test(parent) ? parent + "\\" : parent;
+}
+
 // mode: backup | restore；kind: archive | mirror（仅还原时有效）；pack：是否打包；
 // encryption：加密算法；metadata：是否保存/还原元数据；busy：是否有任务在跑。
 const state = {
@@ -1407,6 +1684,8 @@ const state = {
   busy: false,
   currentVerb: "",
   currentTarget: "",
+  // 目标路径是文件（打包后的 .vbak）时，「打开目标文件夹」要打开它的父目录。
+  currentTargetIsFile: false,
   currentTaskId: null,
   tasks: [],
   sse: null,
@@ -1414,6 +1693,15 @@ const state = {
   pollTimer: 0,
   pollFailures: 0,
   lastProgressSign: "",
+  // —— 目录树选择器 ——
+  treeOpen: false,
+  treeTarget: null,
+  treePath: "",
+  treeToken: 0,
+  // —— 结果卡片「打开目标文件夹」——
+  resultFolder: "",
+  openFolderTimer: 0,
+  openFolderSeq: 0,
 };
 
 // 当前状态下界面上的每个词都从这里取，避免同一个动作在标签、按钮和状态栏
@@ -1525,6 +1813,11 @@ function render(keepStatus) {
   $("row-encrypt").hidden = d.encryptHidden;
   $("row-password").hidden = d.passwordHidden;
   $("row-filter").hidden = d.filterHidden;
+
+  // 目录树按钮服务备份页的源/目标目录（还原页用「浏览…」即可）。
+  for (const button of document.querySelectorAll(".tree-open")) {
+    button.hidden = state.mode !== "backup";
+  }
 
   $("metadata").checked = state.metadata;
 
@@ -1671,20 +1964,29 @@ if (hasNativeChrome) {
     });
   }
 
-  // 宿主在窗口最大化/还原时推消息过来，按钮图标跟着换。
+  // 宿主推回来的消息：窗口状态（字符串）和 shell:* 命令的回执（JSON 对象）。
   webviewHost.addEventListener("message", (e) => {
+    const data = e.data;
+
+    // shell:open-folder 的回执是 PostWebMessageAsJson 发来的对象。
+    if (data && typeof data === "object" &&
+        data.cmd === "shell:open-folder") {
+      handleOpenFolderReply(data);
+      return;
+    }
+
     // 「浏览…」的选择结果（取消时路径为空）。
-    if (typeof e.data === "string" && e.data.startsWith("picked|")) {
-      const path = e.data.slice("picked|".length);
+    if (typeof data === "string" && data.startsWith("picked|")) {
+      const path = data.slice("picked|".length);
       if (pendingPickTarget !== null) {
         if (path) $(pendingPickTarget).value = path;
         pendingPickTarget = null;
       }
       return;
     }
-    if (e.data === "window:maximized") {
+    if (data === "window:maximized") {
       document.body.classList.add("is-maximized");
-    } else if (e.data === "window:restored") {
+    } else if (data === "window:restored") {
       document.body.classList.remove("is-maximized");
     }
   });
@@ -2001,17 +2303,24 @@ function updateRunProgress(task) {
   const percent = Math.max(0, Math.min(100, task.progress));
   $("run-progress-fill").style.width = percent + "%";
 
-  // 进度事件可能很密，状态栏文字只在内容变了才改。
+  // 进度事件可能很密（后端按文件回调，SSE 最多 5 次/秒），状态栏文字只在
+  // 内容变了才改，避免无谓的 DOM 重排。
   const signature = task.state + "|" + percent + "|" +
     task.message + "|" + task.error;
   if (signature === state.lastProgressSign) return;
   state.lastProgressSign = signature;
 
+  // 后端现在会推「正在备份：docs/a.txt (3/10)」这种真实阶段说明，
+  // 直接用它 + 百分比，比笼统的「正在打包…」信息量大。
   const verb = state.currentVerb || describe().verb;
-  let text = task.state === "queued"
-    ? "排队中…"
-    : "正在" + verb + "… " + percent + "%";
-  if (task.message) text += " · " + task.message;
+  let text;
+  if (task.state === "queued") {
+    text = "排队中…";
+  } else if (task.message) {
+    text = task.message + " · " + percent + "%";
+  } else {
+    text = "正在" + verb + "… " + percent + "%";
+  }
   setStatus("busy", text);
 }
 
@@ -2071,7 +2380,99 @@ function showTaskResult(task, ok) {
   $("result-copy").disabled = !target;
   $("result-copy").textContent = "复制路径";
 
+  // 「打开目标文件夹」只在宿主模式 + 成功 + 目标目录确实存在时出现。
+  $("result-open-error").hidden = true;
+  syncResultOpenFolder(ok);
+
   panel.hidden = false;
+}
+
+// ---- 结果区「打开目标文件夹」 -------------------------------------------
+//
+// 命令协议（页面 -> 宿主，JSON 对象）：
+//   window.chrome.webview.postMessage({cmd: "shell:open-folder", path: "<目录>"})
+// 宿主回执（PostWebMessageAsJson，页面拿到的 e.data 是对象）：
+//   {cmd: "shell:open-folder", ok: true}
+//   {cmd: "shell:open-folder", ok: false, error: "<原因>"}
+// 后端没有「路径是否存在」的通用 API，这里先用 /api/fs/list 探测目录，
+// 只有探测通过才显示按钮，避免「点了才报错」。
+
+/// 探测目标文件夹是否存在，成功才把「打开目标文件夹」按钮放出来。
+function syncResultOpenFolder(succeeded) {
+  const button = $("result-open-folder");
+  const seq = ++state.openFolderSeq;
+  button.hidden = true;
+  button.disabled = true;
+  button.textContent = "打开目标文件夹";
+  state.resultFolder = "";
+  if (!hasNativeChrome || !succeeded) return;
+
+  const target = $("result-path").textContent.trim();
+  if (!target) return;
+  // 打包成功后目标是 .vbak 文件，要打开它所在的目录。
+  const folder = state.currentTargetIsFile ? parentDirectory(target) : target;
+  if (!folder) return;
+
+  fetchJson("/api/fs/list?path=" + encodeURIComponent(folder)).then(
+    (data) => {
+      if (seq !== state.openFolderSeq) return;
+      state.resultFolder = (data && textOf(data.path)) || folder;
+      button.hidden = false;
+      button.disabled = false;
+      button.title = "在资源管理器中打开：" + state.resultFolder;
+    }
+  ).catch(() => {
+    // 目录不存在（失败任务可能没写出来）就保持隐藏，不打扰用户。
+  });
+}
+
+/// 点「打开目标文件夹」：把目录发给宿主，宿主用资源管理器打开。
+function openResultFolder() {
+  if (!hasNativeChrome || !state.resultFolder) return;
+  const button = $("result-open-folder");
+  button.disabled = true;
+  button.textContent = "正在打开…";
+  if (state.openFolderTimer) clearTimeout(state.openFolderTimer);
+  // 宿主没回消息时别让按钮永远卡在「正在打开…」。
+  state.openFolderTimer = setTimeout(() => {
+    state.openFolderTimer = 0;
+    button.disabled = false;
+    button.textContent = "打开目标文件夹";
+    showOpenFolderError("宿主没有响应，无法打开文件夹。");
+  }, 4000);
+  webviewHost.postMessage({
+    cmd: "shell:open-folder",
+    path: state.resultFolder,
+  });
+}
+
+function showOpenFolderError(message) {
+  const errorEl = $("result-open-error");
+  errorEl.textContent = message;
+  errorEl.hidden = !message;
+}
+
+/// 处理宿主 shell:open-folder 的回执。
+function handleOpenFolderReply(message) {
+  if (state.openFolderTimer) {
+    clearTimeout(state.openFolderTimer);
+    state.openFolderTimer = 0;
+  }
+  const button = $("result-open-folder");
+  button.disabled = false;
+  if (message && message.ok === true) {
+    button.textContent = "已打开";
+    showOpenFolderError("");
+    setTimeout(() => {
+      if (button.textContent === "已打开") {
+        button.textContent = "打开目标文件夹";
+      }
+    }, 1500);
+  } else {
+    button.textContent = "打开目标文件夹";
+    const reason = (message && textOf(message.error)) || "未知错误";
+    showOpenFolderError("无法打开文件夹：" + reason);
+  }
 }
 
 function stopTaskStreams() {
@@ -2385,6 +2786,10 @@ $("form").addEventListener("submit", async (e) => {
 
   state.currentVerb = d.verb;
   state.currentTarget = dst;
+  // 打包时 dst 是 .vbak 文件，结果区「打开目标文件夹」要打开它所在目录。
+  state.currentTargetIsFile = state.mode === "backup" && state.pack;
+  state.resultFolder = "";
+  $("result-open-error").hidden = true;
   state.lastProgressSign = "";
   setBusy(true);
   setStatus("busy", "正在" + d.verb + "… 0%");
@@ -2433,8 +2838,8 @@ $("form").addEventListener("submit", async (e) => {
 });
 
 // ---- 结果区：复制目标路径 ------------------------------------------------
-// 宿主目前只实现了窗口/选择框命令，没有「在资源管理器中打开」的命令，
-// 所以先提供复制路径；等后端加了打开文件夹的命令再接上。
+// 「打开目标文件夹」走宿主命令（见上面 syncResultOpenFolder）；复制路径在
+// 浏览器回退模式下同样可用，两个按钮并存。
 async function copyText(text) {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2472,13 +2877,205 @@ $("result-copy").addEventListener("click", async () => {
   }, 1600);
 });
 
+$("result-open-folder").addEventListener("click", openResultFolder);
+
 $("tasks-refresh").addEventListener("click", () => {
   refreshTasks();
+});
+
+// ---- 目录树选择器 --------------------------------------------------------
+//
+// 数据来自 GET /api/fs/list?path=（空 path = 盘符列表）。这是纯 HTTP 能力，
+// 浏览器回退模式也能用。展开节点时按需再请求一层，不做整树预取 ——
+// 用户通常只点一两层就选完了。
+
+function openTreePicker(target) {
+  if (state.busy) return;
+  state.treeOpen = true;
+  state.treeTarget = target;
+  $("tree-title").textContent =
+    target === "src" ? "选择源目录" : "选择目标目录";
+  $("tree-status").className = "tree-status";
+  $("tree-status").textContent = "";
+  $("tree-overlay").hidden = false;
+  loadTreeRoot($(target).value.trim());
+  $("tree-close").focus();
+}
+
+function closeTreePicker() {
+  if (!state.treeOpen) return;
+  state.treeOpen = false;
+  state.treeToken += 1;  // 让在途请求的结果作废
+  $("tree-overlay").hidden = true;
+  const target = state.treeTarget;
+  state.treeTarget = null;
+  if (target) $(target).focus();
+}
+
+/// 点击目录名：把路径填回对应输入框并关掉面板。
+function chooseTreePath(path) {
+  const target = state.treeTarget;
+  if (!target || !path) return;
+  $(target).value = path;
+  closeTreePicker();
+  $(target).focus();
+}
+
+async function loadTreeRoot(path, options) {
+  const token = ++state.treeToken;
+  const noFallback = !!(options && options.noFallback);
+  state.treePath = path || "";
+  $("tree-path").textContent = path || "此电脑";
+  $("tree-up").disabled = !path;
+  const list = $("tree-list");
+  list.textContent = "";
+  $("tree-status").className = "tree-status";
+  $("tree-status").textContent = "正在读取…";
+  try {
+    const data = await fetchJson(
+      "/api/fs/list?path=" + encodeURIComponent(path || "")
+    );
+    if (token !== state.treeToken) return;
+    state.treePath = (data && textOf(data.path)) || path || "";
+    $("tree-path").textContent = state.treePath || "此电脑";
+    $("tree-up").disabled = !state.treePath;
+    renderTreeEntries(list, (data && data.entries) || [], 0);
+    $("tree-status").textContent = "";
+  } catch (err) {
+    if (token !== state.treeToken) return;
+    // 输入框里残留的旧路径可能已经不存在：自动退回盘符列表，但保留错误提示。
+    if (path && !noFallback) {
+      await loadTreeRoot("", { noFallback: true });
+      $("tree-status").className = "tree-status is-err";
+      $("tree-status").textContent = err.message;
+      return;
+    }
+    $("tree-status").className = "tree-status is-err";
+    $("tree-status").textContent = err.message;
+  }
+}
+
+/// 把一层目录渲染成可展开的树节点：caret 负责展开/折叠，名字负责选择。
+function renderTreeEntries(container, entries, depth) {
+  const dirs = (entries || []).filter(
+    (entry) => entry && entry.is_dir === true
+  );
+  if (dirs.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "tree-empty";
+    empty.textContent = depth === 0 ? "（这里没有子目录）" : "（空）";
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const entry of dirs) {
+    const node = document.createElement("li");
+    node.className = "tree-node";
+
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    row.style.paddingLeft = (depth * 0.85) + "rem";
+
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "tree-caret";
+    caret.textContent = "▸";
+    caret.title = "展开 / 折叠";
+    caret.setAttribute("aria-label", "展开 " + entry.name);
+    caret.setAttribute("aria-expanded", "false");
+
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "tree-name";
+    name.textContent = entry.name;
+    name.title = entry.path;
+
+    const kids = document.createElement("ul");
+    kids.className = "tree-kids";
+    kids.hidden = true;
+
+    let expanded = false;
+    let loaded = false;
+    caret.addEventListener("click", async () => {
+      expanded = !expanded;
+      caret.textContent = expanded ? "▾" : "▸";
+      caret.setAttribute("aria-expanded", String(expanded));
+      kids.hidden = !expanded;
+      if (!expanded || loaded) return;
+
+      loaded = true;
+      caret.disabled = true;
+      const loading = document.createElement("li");
+      loading.className = "tree-empty";
+      loading.textContent = "正在读取…";
+      kids.appendChild(loading);
+      try {
+        const data = await fetchJson(
+          "/api/fs/list?path=" + encodeURIComponent(entry.path)
+        );
+        kids.textContent = "";
+        renderTreeEntries(kids, (data && data.entries) || [], depth + 1);
+      } catch (err) {
+        kids.textContent = "";
+        const problem = document.createElement("li");
+        problem.className = "tree-empty tree-error";
+        problem.textContent = err.message;
+        kids.appendChild(problem);
+        loaded = false;  // 允许再点一次重试
+      } finally {
+        caret.disabled = false;
+      }
+    });
+    name.addEventListener("click", () => chooseTreePath(entry.path));
+
+    row.appendChild(caret);
+    row.appendChild(name);
+    node.appendChild(row);
+    node.appendChild(kids);
+    container.appendChild(node);
+  }
+}
+
+function treeGoUp() {
+  if (!state.treePath) return;
+  const parent = parentPathForTree(state.treePath);
+  if (parent === null) return;
+  loadTreeRoot(parent);
+}
+
+for (const button of document.querySelectorAll(".tree-open")) {
+  button.addEventListener("click", () => {
+    openTreePicker(button.dataset.treeTarget);
+  });
+}
+
+$("tree-close").addEventListener("click", closeTreePicker);
+
+$("tree-up").addEventListener("click", treeGoUp);
+
+$("tree-refresh").addEventListener("click", () => {
+  if (state.treeOpen) loadTreeRoot(state.treePath);
+});
+
+// 点面板外的遮罩也关闭。只认 mousedown 且目标正好是遮罩本身，
+// 否则拖动文字选区时也会误关。
+$("tree-overlay").addEventListener("mousedown", (e) => {
+  if (e.target === $("tree-overlay")) closeTreePicker();
+});
+
+// Esc 关闭目录树面板（不管焦点在面板的哪个按钮上）。
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.treeOpen) {
+    e.preventDefault();
+    closeTreePicker();
+  }
 });
 
 // ---- 启动 ----------------------------------------------------------------
 $("filter").placeholder =
   "例如（六维：path / name / type / size / time / user）：\n" + FILTER_EXAMPLE;
+
+$("tree-up").disabled = true;
 
 fillCompressionOptions();
 fillEncryptionOptions();
