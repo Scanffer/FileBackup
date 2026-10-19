@@ -276,17 +276,18 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   .form { max-width: 44rem; }
 
   /* 双列：左边是字段名，右边是控件和说明。标签右对齐，和系统属性对话框
-     的排版一致，用户的视线只需要沿一条竖线上下移动。 */
+     的排版一致，用户的视线只需要沿一条竖线上下移动。
+     行距刻意收紧：默认 920×620 窗口里首屏要能放下主要字段。 */
   .row {
     display: grid;
     grid-template-columns: var(--label-w) minmax(0, 1fr);
     column-gap: .875rem;
     align-items: start;
-    margin-bottom: 1.125rem;
+    margin-bottom: .7rem;
   }
 
   .lbl {
-    padding-top: .4rem;
+    padding-top: .32rem;
     text-align: right;
     font-size: .8125rem;
     color: var(--ink-2);
@@ -296,7 +297,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   .control {
     display: flex;
     flex-direction: column;
-    gap: .35rem;
+    gap: .25rem;
     min-width: 0;
   }
 
@@ -458,12 +459,41 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
 
   .btn-secondary:disabled { opacity: .55; cursor: default; }
 
-  /* ---- 多行文本：六维筛选规则（JSON） --------------------------------- */
+  /* 轻量按钮：目录树入口比「浏览…」低一级，不抢主流程的注意力。 */
+  .btn-ghost {
+    flex: 0 0 auto;
+    height: 2rem;
+    padding: 0 .55rem;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: .25rem;
+    font-family: inherit;
+    font-size: .8125rem;
+    color: var(--ink-3);
+    cursor: pointer;
+  }
+
+  .btn-ghost:hover {
+    background: var(--field);
+    border-color: var(--border-strong);
+    color: var(--ink);
+  }
+
+  .btn-ghost:active { background: #3A3A3A; }
+
+  .btn-ghost:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .btn-ghost:disabled { opacity: .5; cursor: default; background: none; }
+
+  /* ---- 多行文本：六维筛选规则（JSON 高级模式） ------------------------ */
 
   textarea {
     width: 100%;
-    /* 10rem 正好放得下占位里的六维示例，不用滚动就能看全。 */
-    min-height: 10rem;
+    min-height: 7.5rem;
     padding: .45rem .625rem;
     font-family: var(--mono);
     font-size: .75rem;
@@ -501,6 +531,184 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   .filter-status.is-ok { color: #7EE787; }
   .filter-status.is-err { color: var(--err); }
 
+  /* ---- 筛选规则：简单 / JSON 双模式 ---------------------------------- */
+
+  .filter-mode {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: .15rem;
+    padding: .15rem;
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    border-radius: .3rem;
+  }
+
+  .seg {
+    appearance: none;
+    height: 1.55rem;
+    padding: 0 .65rem;
+    background: none;
+    border: 0;
+    border-radius: .2rem;
+    font-family: inherit;
+    font-size: .75rem;
+    color: var(--ink-3);
+    cursor: pointer;
+  }
+
+  .seg:hover { color: var(--ink); }
+
+  .seg[aria-pressed="true"] {
+    background: #3A3A3A;
+    color: #FFFFFF;
+  }
+
+  .seg:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .filter-rules {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+  }
+
+  .filter-rule {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    min-width: 0;
+  }
+
+  .filter-rule select {
+    flex: 0 0 auto;
+    width: 4.4rem;
+    height: 1.9rem;
+    padding: 0 .25rem;
+  }
+
+  .filter-rule select.rule-dim { width: 5rem; }
+
+  .filter-rule input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 1.9rem;
+  }
+
+  .filter-rule .rule-del {
+    flex: 0 0 auto;
+    height: 1.9rem;
+    padding: 0 .5rem;
+    font-size: .75rem;
+    color: var(--ink-3);
+  }
+
+  .filter-rule .rule-del:hover { color: var(--err); }
+
+  .filter-actions {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-actions .btn-secondary { height: 1.75rem; padding: 0 .6rem; }
+
+  .filter-actions .hint { flex: 1 1 auto; min-width: 0; }
+
+  /* ---- 高级选项折叠区 ------------------------------------------------ */
+
+  .advanced {
+    margin: .15rem 0 .75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    width: 100%;
+    height: 2.2rem;
+    padding: 0 .15rem;
+    background: none;
+    border: 0;
+    font-family: inherit;
+    font-size: .8125rem;
+    font-weight: 600;
+    color: var(--ink-2);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .advanced-toggle:hover { color: var(--ink); }
+
+  .advanced-toggle:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  .advanced-chevron {
+    width: .9rem;
+    color: var(--ink-3);
+    transition: transform .12s ease;
+  }
+
+  .advanced-toggle[aria-expanded="true"] .advanced-chevron {
+    transform: rotate(90deg);
+  }
+
+  .advanced-summary {
+    margin-left: auto;
+    padding: .04rem .45rem;
+    background: #232323;
+    border: 1px solid var(--border-strong);
+    border-radius: .6rem;
+    font-size: .6875rem;
+    font-weight: 400;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  .advanced-body {
+    padding: .7rem 0 .15rem;
+  }
+
+  /* ---- 还原页：归档信息条 -------------------------------------------- */
+
+  .archive-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .3rem;
+    margin: 0;
+    font-size: .75rem;
+    color: var(--ink-3);
+    min-height: 1.1rem;
+  }
+
+  .archive-chip {
+    padding: .02rem .4rem;
+    background: #232323;
+    border: 1px solid var(--border);
+    border-radius: .6rem;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  .archive-chip.is-warn {
+    color: #E3B341;
+    border-color: rgba(204, 167, 0, .45);
+  }
+
+  .archive-info.is-err { color: var(--err); }
+
+  .row.is-required .lbl { color: #E3B341; }
+
+  .row.is-required input[type="password"] {
+    border-color: rgba(204, 167, 0, .55);
+  }
+
   /* fieldset 只用来「一键禁用整张表单」，视觉上必须完全隐形。 */
   .fields {
     min-width: 0;
@@ -526,11 +734,11 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     cursor: default;
   }
 
-  /* ---- 任务列表 / 结果面板 -------------------------------------------- */
+  /* ---- 任务列表 / 结果面板（紧凑化，避免把页面撑长） ------------------ */
 
   .panel {
-    margin-top: 1.25rem;
-    padding: .75rem .875rem;
+    margin-top: .75rem;
+    padding: .6rem .7rem;
     background: #232323;
     border: 1px solid var(--border-strong);
     border-radius: .375rem;
@@ -541,7 +749,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     align-items: center;
     gap: .5rem;
     min-width: 0;
-    margin-bottom: .5rem;
+    margin-bottom: .4rem;
   }
 
   .panel-title {
@@ -628,7 +836,10 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   .task-list {
     display: flex;
     flex-direction: column;
-    gap: .4rem;
+    gap: .35rem;
+    /* 最多显示几条就滚，不拿历史任务把页面撑长。 */
+    max-height: 10.5rem;
+    overflow: auto;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1109,10 +1320,18 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
                    spellcheck="false" placeholder="例如 D:\我的文档">
             <button type="button" class="browse" data-target="src"
                     title="在资源管理器中选择" hidden>浏览…</button>
-            <button type="button" class="btn-secondary tree-open"
+            <button type="button" class="btn-ghost tree-open"
                     data-tree-target="src" title="打开目录树选择">目录树</button>
           </div>
           <p class="hint" id="src-hint"></p>
+        </div>
+      </div>
+
+      <div class="row archive-row" id="row-archive-info" hidden>
+        <span class="lbl">归档信息</span>
+        <div class="control">
+          <p class="archive-info" id="archive-info"
+             role="status" aria-live="polite"></p>
         </div>
       </div>
 
@@ -1124,7 +1343,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
                    spellcheck="false" placeholder="例如 D:\备份">
             <button type="button" class="browse" data-target="dst"
                     title="在资源管理器中选择" hidden>浏览…</button>
-            <button type="button" class="btn-secondary tree-open"
+            <button type="button" class="btn-ghost tree-open"
                     data-tree-target="dst" title="打开目录树选择">目录树</button>
           </div>
           <p class="hint" id="dst-hint"></p>
@@ -1138,7 +1357,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
             <input type="checkbox" id="pack">
             <span>打包为单个 .vbak 归档文件</span>
           </label>
-          <p class="hint">所有文件合并为一个文件，便于保存和传输；还原时再展开。</p>
+          <p class="hint">合并为单个 .vbak 文件，便于保存和传输。</p>
         </div>
       </div>
 
@@ -1156,57 +1375,86 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
         </div>
       </div>
 
-      <div class="row" id="row-encrypt" hidden>
-        <span class="lbl">加密方式</span>
-        <div class="control">
-          <div class="compress-line">
-            <select id="encrypt" aria-label="加密算法"></select>
-          </div>
-          <p class="hint" id="encrypt-hint">
-            仅单容器 .vbak 支持加密；勾选上方「打包」后启用。
-          </p>
-        </div>
-      </div>
+      <!-- 高级选项：默认折叠，首屏只保留主流程字段。 -->
+      <section class="advanced" id="advanced">
+        <button type="button" class="advanced-toggle" id="advanced-toggle"
+                aria-expanded="false" aria-controls="advanced-body">
+          <span class="advanced-chevron" aria-hidden="true">▸</span>
+          <span>高级选项</span>
+          <span class="advanced-summary" id="advanced-summary" hidden></span>
+        </button>
 
-      <div class="row" id="row-password" hidden>
-        <label class="lbl" for="password">密码</label>
-        <div class="control">
-          <div class="field-line">
-            <input type="password" id="password" autocomplete="new-password"
-                   spellcheck="false" placeholder="加密密码（不会写入归档）">
-            <button type="button" class="btn-secondary" id="password-toggle"
-                    aria-pressed="false" title="显示 / 隐藏密码">显示</button>
-          </div>
-          <p class="hint" id="password-hint"></p>
-        </div>
-      </div>
+        <div class="advanced-body" id="advanced-body" hidden>
 
-      <div class="row" id="row-metadata">
-        <span class="lbl">元数据</span>
-        <div class="control">
-          <label class="check">
-            <input type="checkbox" id="metadata" checked>
-            <span>保存 / 还原元数据（时间戳、Windows 属性等）</span>
-          </label>
-          <p class="hint" id="metadata-hint"></p>
-        </div>
-      </div>
-
-      <div class="row" id="row-filter" hidden>
-        <span class="lbl">筛选规则</span>
-        <div class="control">
-          <textarea id="filter" spellcheck="false"
-                    aria-label="筛选规则 JSON"></textarea>
-          <div class="filter-line">
-            <button type="button" class="btn-secondary" id="filter-example">
-              填入示例
-            </button>
-            <p class="hint filter-status" id="filter-status"
-               role="status" aria-live="polite"></p>
+          <div class="row" id="row-encrypt" hidden>
+            <span class="lbl">加密方式</span>
+            <div class="control">
+              <div class="compress-line">
+                <select id="encrypt" aria-label="加密算法"></select>
+              </div>
+              <p class="hint" id="encrypt-hint"></p>
+            </div>
           </div>
-          <p class="hint" id="filter-hint"></p>
+
+          <div class="row" id="row-password" hidden>
+            <label class="lbl" for="password">密码</label>
+            <div class="control">
+              <div class="field-line">
+                <input type="password" id="password"
+                       autocomplete="new-password" spellcheck="false"
+                       placeholder="加密密码（不会写入归档）">
+                <button type="button" class="btn-secondary"
+                        id="password-toggle" aria-pressed="false"
+                        title="显示 / 隐藏密码">显示</button>
+              </div>
+              <p class="hint" id="password-hint"></p>
+            </div>
+          </div>
+
+          <div class="row" id="row-metadata">
+            <span class="lbl">元数据</span>
+            <div class="control">
+              <label class="check">
+                <input type="checkbox" id="metadata" checked>
+                <span>保存 / 还原元数据（时间戳、Windows 属性等）</span>
+              </label>
+              <p class="hint" id="metadata-hint"></p>
+            </div>
+          </div>
+
+          <div class="row" id="row-filter" hidden>
+            <span class="lbl">筛选规则</span>
+            <div class="control">
+              <div class="filter-mode" role="group" aria-label="筛选编辑方式">
+                <button type="button" class="seg" id="filter-mode-simple"
+                        aria-pressed="true">简单规则</button>
+                <button type="button" class="seg" id="filter-mode-json"
+                        aria-pressed="false">JSON</button>
+              </div>
+              <div class="filter-simple" id="filter-simple">
+                <div class="filter-rules" id="filter-rules"></div>
+                <div class="filter-actions">
+                  <button type="button" class="btn-secondary" id="filter-add">
+                    + 添加规则
+                  </button>
+                </div>
+              </div>
+              <div class="filter-json" id="filter-json" hidden>
+                <textarea id="filter" spellcheck="false"
+                          aria-label="筛选规则 JSON"></textarea>
+                <div class="filter-line">
+                  <button type="button" class="btn-secondary"
+                          id="filter-example">填入示例</button>
+                </div>
+              </div>
+              <p class="hint filter-status" id="filter-status"
+                 role="status" aria-live="polite"></p>
+              <p class="hint" id="filter-hint"></p>
+            </div>
+          </div>
+
         </div>
-      </div>
+      </section>
 
       </fieldset>
 
@@ -1384,7 +1632,7 @@ function syncCompressionControls() {
     hint.textContent = "";
   } else if (!state.pack) {
     hint.textContent =
-      "仅勾选「打包为单个 .vbak 归档文件」时生效；目录镜像模式按原样复制文件。";
+      "仅打包 vbak 时生效；镜像模式按原样复制文件。";
   } else if (!hasLevel) {
     hint.textContent = (info.label || info.id) + " 没有压缩级别参数。";
   } else {
@@ -1456,19 +1704,18 @@ function syncEncryptionControls() {
 
   let encryptHint;
   if (!state.pack) {
-    encryptHint = "仅单容器 .vbak 支持加密；勾选上方「打包」后启用。";
+    encryptHint = "仅 .vbak 打包支持加密。";
   } else if (state.encryption === "none") {
-    encryptHint = "不加密：归档内容以明文保存。";
+    encryptHint = "不加密：内容以明文保存。";
   } else {
     const label = info.label || state.encryption;
-    encryptHint = label + (info.self_made ? "（自研）" : "") +
-      "；需要设置密码，密码不会写入归档。";
-    if (info.note) encryptHint += " " + info.note;
+    encryptHint = label + (info.self_made ? "（自研）" : "") + "；需要密码。";
+    if (info.note && info.note.length <= 40) encryptHint += " " + info.note;
   }
   $("encrypt-hint").textContent = encryptHint;
-  $("password-hint").textContent = state.mode === "backup"
-    ? "加密密码；归档中不保存密码，还原时需要再次输入。"
-    : "加密归档需要密码；未加密的归档可以留空。";
+  if (state.mode === "backup") {
+    $("password-hint").textContent = "密码不会写入归档；还原时再次输入。";
+  }
 }
 
 async function loadAlgorithms() {
@@ -1501,11 +1748,30 @@ async function loadAlgorithms() {
   if (!state.busy) render();
 }
 
-// ---- 六维筛选规则：JSON 文本域 + 实时校验 --------------------------------
+// ---- 六维筛选规则：简单规则行 + JSON 高级模式 + 实时校验 -----------------
 // 规则格式见 core/filter.h：JSON 数组，每条规则可含
 // path / type / name / time / size / user 六个维度，action 为 include 或
-// exclude。前端只做结构校验（后端还会再校验一遍）。
+// exclude。前端的简单模式把「一条规则一个维度」可视化，JSON 模式保留
+// 完整表达能力；两种模式共用同一个 textarea 作为提交源，双向同步。
 const FILTER_DIMENSIONS = ["path", "type", "name", "time", "size", "user"];
+
+const FILTER_DIM_LABELS = {
+  path: "路径",
+  type: "类型",
+  name: "名字",
+  time: "时间",
+  size: "尺寸",
+  user: "用户",
+};
+
+const FILTER_DIM_PLACEHOLDERS = {
+  path: "例如 docs/**",
+  type: "例如 tmp,bak",
+  name: "例如 *.pdf",
+  time: "例如 last 7 days",
+  size: "例如 >= 100MB",
+  user: "例如 owner:alice",
+};
 
 const FILTER_EXAMPLE = [
   "[",
@@ -1608,8 +1874,256 @@ function validateFilterText(text) {
   };
 }
 
+/// 简单规则行 -> Filter JSON 规则数组（空值的行跳过）。
+function jsonFromRules(rules) {
+  const output = [];
+  for (const rule of rules || []) {
+    const value = String(rule.value == null ? "" : rule.value).trim();
+    if (!value) continue;
+    const item = {
+      action: rule.action === "exclude" ? "exclude" : "include",
+    };
+    item[rule.dim] = value;
+    output.push(item);
+  }
+  return output;
+}
+
+/// Filter JSON 规则数组 -> 简单规则行。一条规则有多个维度时拆成多行
+/// （简单模式表达不了「同一规则内多维度 AND」），并把条数报告给调用方。
+function rulesFromParsed(parsed) {
+  const rules = [];
+  let complex = 0;
+  for (const rule of parsed || []) {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) continue;
+    const action = rule.action === "exclude" ? "exclude" : "include";
+    const dims = FILTER_DIMENSIONS.filter(
+      (dim) => rule[dim] !== undefined
+    );
+    if (dims.length === 0) continue;
+    if (dims.length > 1) complex += 1;
+    for (const dim of dims) {
+      rules.push({ action: action, dim: dim, value: String(rule[dim]) });
+    }
+  }
+  return { rules: rules, complex: complex };
+}
+
+function validateSimpleRules() {
+  for (let i = 0; i < state.filterRules.length; i += 1) {
+    const rule = state.filterRules[i];
+    if (!String(rule.value == null ? "" : rule.value).trim()) {
+      return {
+        ok: false,
+        empty: false,
+        message: "第 " + (i + 1) + " 条规则没有填写值。",
+      };
+    }
+  }
+  if (state.filterRules.length === 0) {
+    return { ok: true, empty: true, message: "还没有规则；留空表示不筛选。" };
+  }
+  return {
+    ok: true,
+    empty: false,
+    message: "规则合法：" + state.filterRules.length + " 条。",
+  };
+}
+
+/// 把简单规则写回 textarea —— textarea 始终是提交时的唯一数据源，
+/// 两种编辑模式不会各存一份导致提交内容不一致。
+function syncFilterJsonFromRules() {
+  const rules = jsonFromRules(state.filterRules);
+  $("filter").value = rules.length === 0
+    ? ""
+    : JSON.stringify(rules, null, 2);
+  updateFilterStatus();
+}
+
+function filterRuleCount() {
+  if (state.filterMode === "simple") {
+    return jsonFromRules(state.filterRules).length;
+  }
+  const check = validateFilterText($("filter").value);
+  return check.ok && check.rules ? check.rules.length : 0;
+}
+
+/// 高级选项折叠标题右侧的摘要：只显示「有设置」的信息，默认状态不占地方。
+function updateAdvancedSummary() {
+  const parts = [];
+  if (state.encryption !== "none") parts.push("加密");
+  if (!state.metadata) parts.push("元数据关");
+  const count = filterRuleCount();
+  if (count > 0) parts.push("筛选 " + count + " 条");
+  if (state.passwordRequired) parts.push("需要密码");
+  const summary = $("advanced-summary");
+  summary.textContent = parts.join(" · ");
+  summary.hidden = parts.length === 0;
+}
+
+function syncAdvancedPanel() {
+  $("advanced-body").hidden = !state.advancedOpen;
+  $("advanced-toggle").setAttribute(
+    "aria-expanded", String(state.advancedOpen));
+  updateAdvancedSummary();
+}
+
+/// 密码相关错误要落到可见的控件上：高级选项收起时自动展开。
+function openAdvancedForPassword() {
+  if (!state.advancedOpen) {
+    state.advancedOpen = true;
+    syncAdvancedPanel();
+  }
+}
+
+function renderFilterRules() {
+  const container = $("filter-rules");
+  container.textContent = "";
+  for (let index = 0; index < state.filterRules.length; index += 1) {
+    const rule = state.filterRules[index];
+    const row = document.createElement("div");
+    row.className = "filter-rule";
+
+    const action = document.createElement("select");
+    action.className = "rule-action";
+    action.setAttribute("aria-label", "规则动作");
+    for (const pair of [["include", "包含"], ["exclude", "排除"]]) {
+      const option = document.createElement("option");
+      option.value = pair[0];
+      option.textContent = pair[1];
+      action.appendChild(option);
+    }
+    action.value = rule.action === "exclude" ? "exclude" : "include";
+
+    const dim = document.createElement("select");
+    dim.className = "rule-dim";
+    dim.setAttribute("aria-label", "规则维度");
+    for (const key of FILTER_DIMENSIONS) {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = FILTER_DIM_LABELS[key] || key;
+      dim.appendChild(option);
+    }
+    dim.value = rule.dim;
+
+    const value = document.createElement("input");
+    value.type = "text";
+    value.className = "rule-value";
+    value.autocomplete = "off";
+    value.spellcheck = false;
+    value.value = rule.value == null ? "" : rule.value;
+    value.placeholder = FILTER_DIM_PLACEHOLDERS[rule.dim] || "值";
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn-secondary rule-del";
+    remove.title = "删除这条规则";
+    remove.textContent = "删除";
+
+    action.addEventListener("change", () => {
+      state.filterRules[index].action = action.value;
+      syncFilterJsonFromRules();
+      updateAdvancedSummary();
+    });
+    dim.addEventListener("change", () => {
+      state.filterRules[index].dim = dim.value;
+      value.placeholder = FILTER_DIM_PLACEHOLDERS[dim.value] || "值";
+      syncFilterJsonFromRules();
+    });
+    value.addEventListener("input", () => {
+      state.filterRules[index].value = value.value;
+      syncFilterJsonFromRules();
+      updateAdvancedSummary();
+    });
+    remove.addEventListener("click", () => {
+      state.filterRules.splice(index, 1);
+      renderFilterRules();
+      syncFilterJsonFromRules();
+      updateAdvancedSummary();
+    });
+
+    row.appendChild(action);
+    row.appendChild(dim);
+    row.appendChild(value);
+    row.appendChild(remove);
+    container.appendChild(row);
+  }
+}
+
+function addFilterRule() {
+  state.filterRules.push({ action: "include", dim: "path", value: "" });
+  renderFilterRules();
+  syncFilterJsonFromRules();
+  updateAdvancedSummary();
+  const container = $("filter-rules");
+  const last = container.children[container.children.length - 1];
+  if (last && last.children[2] && last.children[2].focus) {
+    last.children[2].focus();
+  }
+}
+
+/// 简单 <-> JSON 切换。JSON 非法时拒绝切回简单模式，
+/// 避免把用户正在编辑的内容静默丢掉。
+function switchFilterMode(mode) {
+  if (mode === state.filterMode) return;
+  if (mode === "simple") {
+    const check = validateFilterText($("filter").value);
+    if (!check.ok) {
+      const status = $("filter-status");
+      status.className = "hint filter-status is-err";
+      status.textContent = "先修正 JSON 才能切回简单模式：" + check.message;
+      return;
+    }
+    const converted = rulesFromParsed(check.rules || []);
+    state.filterRules = converted.rules;
+    state.filterMode = "simple";
+    syncFilterModeUI();
+    renderFilterRules();
+    syncFilterJsonFromRules();
+    if (converted.complex > 0) {
+      const status = $("filter-status");
+      status.className = "hint filter-status is-err";
+      status.textContent = "已载入 " + converted.rules.length +
+        " 条规则；其中 " + converted.complex +
+        " 条多维度组合规则被拆成多行，组合（AND）语义可能变化，请检查。";
+    }
+  } else {
+    state.filterMode = "json";
+    syncFilterModeUI();
+    syncFilterJsonFromRules();
+  }
+  updateAdvancedSummary();
+}
+
+function syncFilterModeUI() {
+  const simple = state.filterMode === "simple";
+  $("filter-mode-simple").setAttribute("aria-pressed", String(simple));
+  $("filter-mode-json").setAttribute("aria-pressed", String(!simple));
+  $("filter-simple").hidden = !simple;
+  $("filter-json").hidden = simple;
+}
+
 function updateFilterStatus() {
-  const result = validateFilterText($("filter").value);
+  let result = validateFilterText($("filter").value);
+  if (state.filterMode === "simple") {
+    const simple = validateSimpleRules();
+    if (!simple.ok) {
+      result = {
+        ok: false,
+        empty: false,
+        rules: null,
+        message: simple.message,
+      };
+    } else if (state.filterRules.length > 0) {
+      result = {
+        ok: true,
+        empty: false,
+        rules: result.rules,
+        message: "规则合法：" + state.filterRules.length + " 条。",
+      };
+    }
+    // 规则行为空时沿用 textarea（提交源）的校验结果：多半就是「留空 = 不筛选」。
+  }
   const status = $("filter-status");
   status.className = "hint filter-status" +
     (result.ok ? (result.empty ? "" : " is-ok") : " is-err");
@@ -1702,6 +2216,17 @@ const state = {
   resultFolder: "",
   openFolderTimer: 0,
   openFolderSeq: 0,
+  // —— 高级选项折叠 / 筛选编辑模式 ——
+  advancedOpen: false,
+  filterMode: "simple",
+  filterRules: [],
+  // —— 还原页归档信息 ——
+  archiveInfo: null,
+  archiveInfoError: "",
+  archiveInfoPath: "",
+  archiveInfoTimer: 0,
+  archiveInfoToken: 0,
+  passwordRequired: false,
 };
 
 // 当前状态下界面上的每个词都从这里取，避免同一个动作在标签、按钮和状态栏
@@ -1716,12 +2241,12 @@ function describe() {
         : "就绪：将把源目录完整复制到目标目录，已存在的文件会跳过。",
       srcLabel: "源目录",
       srcPlaceholder: "例如 D:\\我的文档",
-      srcHint: "要备份的文件夹，其下所有文件都会按原目录结构保存。",
+      srcHint: "要备份的文件夹，含子目录。",
       dstLabel: pack ? "归档文件" : "目标位置",
       dstPlaceholder: pack ? "例如 D:\\备份\\docs.vbak" : "例如 D:\\备份",
       dstHint: pack
-        ? "生成单个 .vbak 文件；所在目录不存在时会自动创建。"
-        : "目标目录会得到源目录的完整副本；已存在的文件会跳过。",
+        ? "生成单个 .vbak；目录不存在会自动创建。"
+        : "源目录会完整复制到这里；已存在的文件跳过。",
       kindHidden: true,
       packHidden: false,
       compressHidden: false,
@@ -1743,7 +2268,7 @@ function describe() {
     srcHint: archive ? "要展开的 .vbak 归档文件。" : "之前备份得到的目录副本。",
     dstLabel: "还原到",
     dstPlaceholder: "例如 D:\\还原结果",
-    dstHint: "文件会恢复到该目录；子目录不存在时会自动创建。",
+    dstHint: "文件会恢复到该目录。",
     kindHidden: false,
     packHidden: true,
     compressHidden: true,
@@ -1763,38 +2288,185 @@ function setStatus(kind, text) {
 function syncMetadataHint() {
   if (state.mode === "backup") {
     $("metadata-hint").textContent = state.pack
-      ? "把时间戳、Windows 属性等元数据写入 v4 归档；关闭后只备份文件内容。"
-      : "把时间戳、Windows 属性等元数据写入 .backup-manifest.json；" +
-        "关闭后只复制文件内容。";
+      ? "写入 v4 归档：时间戳、Windows 属性等。"
+      : "写入 .backup-manifest.json：时间戳、属性等。";
   } else if (state.kind === "archive") {
     $("metadata-hint").textContent =
-      "还原归档中保存的元数据（时间戳、属性等）；关闭后只写文件内容。";
+      "按归档中记录的元数据还原时间戳、属性等。";
   } else {
     $("metadata-hint").textContent =
-      "读取备份目录中的 .backup-manifest.json 还原元数据；关闭后只写文件内容。";
+      "按 .backup-manifest.json 还原时间戳、属性等。";
   }
 }
 
 /// 筛选规则区：备份的两种模式都支持筛选（镜像模式写 .backup-manifest.json），
 /// 只有还原模式不适用，整行隐藏。
 function syncFilterHint() {
-  const textarea = $("filter");
   const filterEnabled = state.mode === "backup" && !state.busy;
-  textarea.disabled = !filterEnabled;
+  $("filter").disabled = !filterEnabled;
+  $("filter-add").disabled = !filterEnabled;
   $("filter-example").disabled = !filterEnabled;
   const hint = $("filter-hint");
   if (state.mode !== "backup") {
     hint.textContent = "";
-  } else if (!state.pack) {
-    hint.textContent =
-      "镜像模式同样应用筛选：被排除的条目不复制，规则与元数据一起写入" +
-      " .backup-manifest.json。";
+  } else if (state.filterMode === "simple") {
+    hint.textContent = state.pack
+      ? "同维度多值用逗号分隔；留空 = 不筛选。"
+      : "镜像模式同样应用筛选：被排除的条目不复制；留空 = 不筛选。";
   } else {
-    hint.textContent =
-      "JSON 数组；同一条规则内的多个维度是「且」，同一维度内逗号分隔是" +
-      "「或」；include 为空时默认全选，命中 exclude 优先排除。";
+    hint.textContent = state.pack
+      ? "JSON 数组；同一规则内多维度是「且」，同维度逗号分隔是「或」。"
+      : "镜像模式同样应用筛选；JSON 数组，留空 = 不筛选。";
   }
   updateFilterStatus();
+}
+
+// ---- 还原页：归档信息条 / 密码提示 --------------------------------------
+//
+// 输入 .vbak 路径后 debounce 调 GET /api/archive/info?path=，把
+// 版本 / 条目数 / 大小 / 压缩 / 加密 / 元数据展示成一行 chip。
+// 读不到时显示行内错误，不阻塞还原表单。
+
+function archiveChip(text, warn) {
+  const chip = document.createElement("span");
+  chip.className = "archive-chip" + (warn ? " is-warn" : "");
+  chip.textContent = text;
+  return chip;
+}
+
+function compressionLabel(id) {
+  const info = findAlgorithm(compressAlgorithms, id);
+  return (info && info.label) || id || "未知";
+}
+
+function encryptionLabel(id) {
+  const info = findAlgorithm(encryptAlgorithms, id);
+  return (info && info.label) || id || "未知";
+}
+
+function formatCount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value == null ? "?" : value);
+  return number.toLocaleString("zh-CN");
+}
+
+/// 根据 state.archiveInfo / archiveInfoError 重画信息条与行的可见性。
+function syncArchiveInfoRow() {
+  const isArchiveRestore =
+    state.mode === "restore" && state.kind === "archive";
+  const hasContent = !!(state.archiveInfo || state.archiveInfoError);
+  $("row-archive-info").hidden = !isArchiveRestore || !hasContent;
+
+  const line = $("archive-info");
+  line.textContent = "";
+  line.className = "archive-info";
+  if (state.archiveInfoError) {
+    line.className = "archive-info is-err";
+    line.textContent = state.archiveInfoError;
+    return;
+  }
+  const info = state.archiveInfo;
+  if (!info) return;
+  line.appendChild(archiveChip("版本 v" + formatCount(info.version)));
+  line.appendChild(archiveChip(formatCount(info.entry_count) + " 个文件"));
+  line.appendChild(archiveChip(formatBytes(info.archive_size)));
+  line.appendChild(
+    archiveChip("压缩 " + compressionLabel(info.compression)));
+  line.appendChild(archiveChip(
+    info.encrypted ? "加密 " + encryptionLabel(info.encryption) : "未加密",
+    !!info.encrypted));
+  line.appendChild(archiveChip(info.has_metadata ? "含元数据" : "无元数据"));
+}
+
+/// 加密归档时把密码行标黄并提示必填；非加密归档保持可用但不再突出。
+function syncArchivePasswordRow() {
+  const required =
+    state.mode === "restore" && state.kind === "archive" &&
+    !!(state.archiveInfo && state.archiveInfo.encrypted);
+  state.passwordRequired = required;
+  $("row-password").className = required ? "row is-required" : "row";
+  if (state.mode !== "restore") return;  // 备份侧密码提示由加密控件负责
+  $("password-hint").textContent = required
+    ? "此归档已加密，必须填写密码；密码不会写入归档。"
+    : "加密归档需要密码；未加密的归档可以留空。";
+}
+
+function resetArchiveInfoState() {
+  if (state.archiveInfoTimer) {
+    clearTimeout(state.archiveInfoTimer);
+    state.archiveInfoTimer = 0;
+  }
+  state.archiveInfoToken += 1;
+  state.archiveInfo = null;
+  state.archiveInfoError = "";
+  state.archiveInfoPath = "";
+}
+
+/// 输入框变化后 debounce 拉归档信息；同一路径不重复请求。
+function scheduleArchiveInfo() {
+  if (state.archiveInfoTimer) {
+    clearTimeout(state.archiveInfoTimer);
+    state.archiveInfoTimer = 0;
+  }
+  if (state.mode !== "restore" || state.kind !== "archive") {
+    resetArchiveInfoState();
+    syncArchiveInfoRow();
+    syncArchivePasswordRow();
+    updateAdvancedSummary();
+    return;
+  }
+  const path = $("src").value.trim();
+  if (!path) {
+    resetArchiveInfoState();
+    syncArchiveInfoRow();
+    syncArchivePasswordRow();
+    updateAdvancedSummary();
+    return;
+  }
+  if (path === state.archiveInfoPath &&
+      (state.archiveInfo || state.archiveInfoError)) {
+    return;
+  }
+  state.archiveInfoTimer = setTimeout(() => {
+    state.archiveInfoTimer = 0;
+    loadArchiveInfo(path);
+  }, 400);
+}
+
+async function loadArchiveInfo(path) {
+  const token = ++state.archiveInfoToken;
+  state.archiveInfoPath = path;
+  state.archiveInfo = null;
+  state.archiveInfoError = "";
+  $("row-archive-info").hidden = false;
+  const line = $("archive-info");
+  line.className = "archive-info";
+  line.textContent = "正在读取归档信息…";
+
+  try {
+    const data = await fetchJson(
+      "/api/archive/info?path=" + encodeURIComponent(path)
+    );
+    if (token !== state.archiveInfoToken) return;
+    if (!data || !data.info) throw new Error("归档信息为空");
+    state.archiveInfo = data.info;
+  } catch (err) {
+    if (token !== state.archiveInfoToken) return;
+    state.archiveInfo = null;
+    state.archiveInfoError = "无法读取归档信息：" +
+      (err && err.message ? err.message : "未知错误");
+  }
+  if ($("src").value.trim() !== path) return;
+
+  syncArchiveInfoRow();
+  syncArchivePasswordRow();
+  updateAdvancedSummary();
+  // 加密归档：自动展开高级选项，让密码框直接可见。
+  if (state.archiveInfo && state.archiveInfo.encrypted &&
+      !state.advancedOpen) {
+    state.advancedOpen = true;
+    syncAdvancedPanel();
+  }
 }
 
 function render(keepStatus) {
@@ -1814,9 +2486,16 @@ function render(keepStatus) {
   $("row-password").hidden = d.passwordHidden;
   $("row-filter").hidden = d.filterHidden;
 
-  // 目录树按钮服务备份页的源/目标目录（还原页用「浏览…」即可）。
+  // 目录树按钮：备份页源/目标都能选；还原页只有「还原到」是目录。
   for (const button of document.querySelectorAll(".tree-open")) {
-    button.hidden = state.mode !== "backup";
+    button.hidden = state.mode === "backup"
+      ? false
+      : button.dataset.treeTarget !== "dst";
+  }
+
+  // 不在归档还原页时，清掉上一次的归档信息，避免切回来看到脏数据。
+  if (state.mode !== "restore" || state.kind !== "archive") {
+    resetArchiveInfoState();
   }
 
   $("metadata").checked = state.metadata;
@@ -1824,7 +2503,12 @@ function render(keepStatus) {
   syncCompressionControls();
   syncEncryptionControls();
   syncMetadataHint();
+  syncFilterModeUI();
+  if (state.filterMode === "simple") renderFilterRules();
   syncFilterHint();
+  syncArchiveInfoRow();
+  syncArchivePasswordRow();
+  syncAdvancedPanel();
 
   $("src-label").textContent = d.srcLabel;
   $("dst-label").textContent = d.dstLabel;
@@ -1837,6 +2521,12 @@ function render(keepStatus) {
     ? "正在" + (state.currentVerb || d.verb) + "…"
     : "开始" + d.verb;
   $("go").disabled = state.busy;
+
+  // 还原归档时，输入框里已有路径就顺手拉一次归档信息（debounce）。
+  if (state.mode === "restore" && state.kind === "archive" &&
+      $("src").value.trim()) {
+    scheduleArchiveInfo();
+  }
 
   // 换模式或选项就把上一次的结果收起来，换回「接下来会发生什么」，
   // 免得上一轮的「完成」被误读成本轮的。任务运行中不动状态栏。
@@ -1880,6 +2570,17 @@ $("metadata").addEventListener("change", (e) => {
   render();
 });
 
+// 高级选项折叠：默认收起，展开后显示加密/元数据/筛选。
+$("advanced-toggle").addEventListener("click", () => {
+  if (state.busy) return;
+  state.advancedOpen = !state.advancedOpen;
+  syncAdvancedPanel();
+  if (state.advancedOpen && state.mode === "restore" &&
+      state.kind === "archive") {
+    scheduleArchiveInfo();
+  }
+});
+
 // 密码显示/隐藏：把 input 的 type 在 password / text 之间切换。
 $("password-toggle").addEventListener("click", () => {
   const input = $("password");
@@ -1889,7 +2590,20 @@ $("password-toggle").addEventListener("click", () => {
   $("password-toggle").setAttribute("aria-pressed", String(show));
 });
 
-$("filter").addEventListener("input", updateFilterStatus);
+$("filter-mode-simple").addEventListener("click", () => {
+  switchFilterMode("simple");
+});
+
+$("filter-mode-json").addEventListener("click", () => {
+  switchFilterMode("json");
+});
+
+$("filter-add").addEventListener("click", addFilterRule);
+
+$("filter").addEventListener("input", () => {
+  updateFilterStatus();
+  updateAdvancedSummary();
+});
 
 $("filter-example").addEventListener("click", () => {
   const textarea = $("filter");
@@ -1899,8 +2613,12 @@ $("filter-example").addEventListener("click", () => {
   }
   textarea.value = FILTER_EXAMPLE;
   updateFilterStatus();
+  updateAdvancedSummary();
   textarea.focus();
 });
+
+// .vbak 路径变化后 debounce 拉归档信息（还原页用）。
+$("src").addEventListener("input", scheduleArchiveInfo);
 
 // ---- 窗口按钮与标题栏拖拽（仅 WebView2 宿主模式）------------------------
 
@@ -1979,8 +2697,13 @@ if (hasNativeChrome) {
     if (typeof data === "string" && data.startsWith("picked|")) {
       const path = data.slice("picked|".length);
       if (pendingPickTarget !== null) {
-        if (path) $(pendingPickTarget).value = path;
+        const target = pendingPickTarget;
         pendingPickTarget = null;
+        if (path) {
+          $(target).value = path;
+          // 还原页选了 .vbak 之后要刷新归档信息。
+          if (target === "src") scheduleArchiveInfo();
+        }
       }
       return;
     }
@@ -2728,17 +3451,35 @@ $("form").addEventListener("submit", async (e) => {
   if (state.mode === "backup") {
     if (state.pack && state.encryption !== "none" && !passwordValue) {
       setStatus("err", "已选择加密算法，请先填写密码。");
+      openAdvancedForPassword();
       $("password").focus();
       return;
+    }
+    // 简单模式先检查有没有空值行；再统一按 JSON（提交源）校验一遍。
+    if (state.filterMode === "simple") {
+      const simple = validateSimpleRules();
+      if (!simple.ok) {
+        updateFilterStatus();
+        setStatus("err", "筛选规则不完整：" + simple.message);
+        $("advanced-toggle").focus();
+        return;
+      }
     }
     const filterCheck = validateFilterText($("filter").value);
     if (!filterCheck.ok) {
       updateFilterStatus();
       setStatus("err", "筛选规则无效：" + filterCheck.message);
-      $("filter").focus();
+      if (state.filterMode === "json") $("filter").focus();
       return;
     }
     if (!filterCheck.empty) filterValue = JSON.stringify(filterCheck.rules);
+  } else if (state.kind === "archive" &&
+             state.archiveInfo && state.archiveInfo.encrypted &&
+             !passwordValue) {
+    setStatus("err", "此归档已加密，请先填写密码。");
+    openAdvancedForPassword();
+    $("password").focus();
+    return;
   }
 
   // 字段名与语义和 CLI 的 --src / --dst / --pack / --archive 一一对应
@@ -3076,6 +3817,11 @@ $("filter").placeholder =
   "例如（六维：path / name / type / size / time / user）：\n" + FILTER_EXAMPLE;
 
 $("tree-up").disabled = true;
+
+// 高级选项默认折叠；筛选默认简单规则模式（空规则 = 不筛选）。
+state.advancedOpen = false;
+state.filterMode = "simple";
+state.filterRules = [];
 
 fillCompressionOptions();
 fillEncryptionOptions();
