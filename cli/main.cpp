@@ -158,7 +158,7 @@ void print_usage(std::ostream& os) {
           "命令：\n"
           "  backup    备份目录树到指定位置\n"
           "  restore   将备份内容还原到指定位置\n"
-          "  list      列出归档内容（尚未实现）\n"
+          "  list      列出归档内容（路径/大小/算法）\n"
           "  verify    校验归档完整性（尚未实现）\n"
           "  gui       启动图形界面（同目录的 FileBackup.exe）\n"
           "\n"
@@ -192,7 +192,7 @@ void print_version() {
 /// 尚未实现的子命令给出明确提示，而不是静默失败。
 void report_not_implemented(const std::wstring& command) {
     std::cerr << "命令 '" << narrow_ascii(command) << "' 尚未实现。\n"
-              << "归档 list/verify 会在 VBAK v2 完整归档模块完成后提供。\n";
+              << "verify 会在归档校验模块完成后提供。\n";
 }
 
 }  // namespace
@@ -458,7 +458,45 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (command == L"list" || command == L"verify") {
+    if (command == L"list") {
+        const auto archive = find_opt(argc, argv, 2, L"--archive");
+        if (!archive) {
+            std::cerr << "用法：FileBackup-cli list --archive <归档.vbak>\n";
+            return 1;
+        }
+
+        std::string error;
+        try {
+            const auto info = backup::inspect_archive(*archive, error);
+            if (!info) {
+                std::cerr << "读取归档失败：" << error << "\n";
+                return 3;
+            }
+
+            const std::filesystem::path archive_path = *archive;
+            std::cout << "归档：" << archive_path.u8string() << "\n"
+                      << "格式：VBAK v" << info->version << "，"
+                      << info->entry_count << " 个条目，"
+                      << info->archive_size << " 字节\n"
+                      << "默认压缩：" << backup::to_string(info->compression)
+                      << "    加密：" << backup::to_string(info->encryption)
+                      << "    元数据："
+                      << (info->has_metadata ? "是" : "否") << "\n\n"
+                      << "原始大小\t存储大小\t压缩\t路径\n";
+            for (const auto& entry : info->entries) {
+                std::cout << entry.original_size << "\t" << entry.stored_size
+                          << "\t"
+                          << backup::to_string(entry.compression) << "\t"
+                          << entry.path << "\n";
+            }
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "读取归档失败：" << e.what() << "\n";
+            return 3;
+        }
+    }
+
+    if (command == L"verify") {
         report_not_implemented(command);
         return 2;
     }

@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "algorithm.h"
 #include "filter.h"
@@ -118,6 +121,34 @@ struct UnpackResult {
     std::uintmax_t entries_read = 0;
     std::uintmax_t bytes_read = 0;  ///< 原始字节数
 };
+
+/// 归档里一个条目的信息（list / GUI 展示用，不读取数据内容）。
+struct PackEntryInfo {
+    std::string path;  ///< 相对路径（UTF-8）
+    std::uint64_t original_size = 0;
+    std::uint64_t stored_size = 0;
+    std::uint32_t crc32 = 0;
+    CompressionId compression = CompressionId::None;
+};
+
+/// VBAK 归档头信息 + 条目列表。
+/// 加密归档的条目名/大小仍是明文（当前格式如此），无需密码即可 list；
+/// 校验 CRC 的解密需要 unpack/verify。
+struct PackArchiveInfo {
+    std::uint16_t version = 0;
+    CompressionId compression = CompressionId::None;  ///< 归档默认压缩算法
+    EncryptionId encryption = EncryptionId::None;
+    std::uint32_t entry_count = 0;
+    std::uint64_t archive_size = 0;
+    bool has_metadata = false;
+    bool encrypted = false;
+    std::vector<PackEntryInfo> entries;
+};
+
+/// 读取归档头与条目列表，不做解密/解压/CRC 校验。
+/// 文件不存在/格式损坏/截断返回 nullopt，error 填 UTF-8 原因。
+std::optional<PackArchiveInfo> inspect_archive(
+    const std::filesystem::path& archive, std::string& error);
 
 /// 把 src 整棵树打包成单个归档文件（.vbak）。
 /// 失败抛 std::runtime_error（UTF-8 消息）。

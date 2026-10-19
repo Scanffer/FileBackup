@@ -634,6 +634,46 @@ void register_routes(httplib::Server& svr,
                     });
             });
 
+    // ---- 归档信息（还原页选择 .vbak 后展示） ----------------------------
+    svr.Get("/api/archive/info", [](const httplib::Request& req,
+                                    httplib::Response& res) {
+        const std::string path = param(req, "path");
+        if (path.empty()) {
+            reply_error(res, 400, "missing_param", "缺少参数：path");
+            return;
+        }
+        if (path.find('\0') != std::string::npos) {
+            reply_error(res, 400, "invalid_path", "path 含非法字符");
+            return;
+        }
+
+        std::string error;
+        std::optional<PackArchiveInfo> info;
+        try {
+            info = inspect_archive(path_from_u8(path), error);
+        } catch (const std::exception& e) {
+            reply_error(res, 400, "invalid_path", e.what());
+            return;
+        }
+        if (!info) {
+            reply_error(res, 400, "archive_error",
+                        error.empty() ? "无法读取归档" : error);
+            return;
+        }
+
+        nlohmann::json body = {
+            {"ok", true},
+            {"info",
+             {{"version", info->version},
+              {"entry_count", info->entry_count},
+              {"archive_size", info->archive_size},
+              {"compression", to_string(info->compression)},
+              {"encryption", to_string(info->encryption)},
+              {"encrypted", info->encrypted},
+              {"has_metadata", info->has_metadata}}}};
+        reply_json(res, 200, body);
+    });
+
     // ---- 目录列表（给 GUI 目录树用，可选能力） --------------------------
     svr.Get("/api/fs/list", [](const httplib::Request& req,
                                httplib::Response& res) {

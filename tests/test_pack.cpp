@@ -157,6 +157,47 @@ TEST_CASE("pack falls back to raw storage for incompressible bytes", "[pack]") {
     fs::remove_all(base, ec);
 }
 
+TEST_CASE("inspect_archive reads header and entry list", "[pack][inspect]") {
+    const fs::path base = fresh_temp_dir();
+    const fs::path src = base / "src";
+    write_text(src / "a.txt", make_repetitive(8000));
+    write_text(src / "sub" / "b.txt", "inspect me");
+
+    backup::PackOptions options;
+    options.src = src;
+    options.archive = base / "info.vbak";
+    options.compression = backup::CompressionId::Deflate;
+    options.encryption = backup::EncryptionId::Aes256Cbc;
+    options.password = "inspect-password";
+    options.keep_metadata = true;
+    REQUIRE(backup::pack_directory(options).entries_written == 2);
+
+    std::string error;
+    const auto info = backup::inspect_archive(options.archive, error);
+    REQUIRE(info.has_value());
+    REQUIRE(error.empty());
+    REQUIRE(info->version == 4);
+    REQUIRE(info->entry_count == 2);
+    REQUIRE(info->encrypted);
+    REQUIRE(info->encryption == backup::EncryptionId::Aes256Cbc);
+    REQUIRE(info->has_metadata);
+    REQUIRE(info->entries.size() == 2);
+    REQUIRE(info->entries[0].path == "a.txt");
+    REQUIRE(info->entries[0].compression == backup::CompressionId::Deflate);
+    REQUIRE(info->entries[1].path == "sub/b.txt");
+
+    // 截断文件必须失败，而不是读出一半。
+    const std::string bytes = read_text(options.archive);
+    const fs::path broken = base / "broken.vbak";
+    write_text(broken, bytes.substr(0, bytes.size() / 2));
+    std::string broken_error;
+    REQUIRE_FALSE(backup::inspect_archive(broken, broken_error).has_value());
+    REQUIRE_FALSE(broken_error.empty());
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
 TEST_CASE("pack applies six-dimension filter", "[pack][filter]") {
     const fs::path base = fresh_temp_dir();
     const fs::path src = base / "src";

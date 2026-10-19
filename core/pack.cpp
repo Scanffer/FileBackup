@@ -607,4 +607,133 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
     return result;
 }
 
+// ------------------------------------------------------------------
+// 归档信息 / 条目列表（不解密、不解压）
+// ------------------------------------------------------------------
+
+std::optional<PackArchiveInfo> inspect_archive(
+    const std::filesystem::path& archive, std::string& error) {
+    std::ifstream in(archive, std::ios::binary);
+    if (!in) {
+        error = "无法打开归档文件";
+        return std::nullopt;
+    }
+
+    in.seekg(0, std::ios::end);
+    const std::uint64_t archive_size =
+        static_cast<std::uint64_t>(in.tellg());
+    in.seekg(0, std::ios::beg);
+
+    char magic[4];
+    in.read(magic, 4);
+    if (!in || std::memcmp(magic, kMagic, 4) != 0) {
+        error = "不是 VBAK 归档（magic 不匹配）";
+        return std::nullopt;
+    }
+
+    PackArchiveInfo info;
+    info.archive_size = archive_size;
+    info.version = read_u16(in);
+    if (info.version != kVersion1 && info.version != kVersion2 &&
+        info.version != kVersion3 && info.version != kVersion4) {
+        error = "不支持的归档版本：" + std::to_string(info.version);
+        return std::nullopt;
+    }
+    const std::uint16_t flags = read_u16(in);
+
+    std::uint8_t comp_id = 0;
+    std::uint8_t enc_id = 0;
+    if (info.version >= kVersion3) {
+        comp_id = static_cast<std::uint8_t>(in.get());
+        enc_id = static_cast<std::uint8_t>(in.get());
+        (void)in.get();
+        (void)in.get();
+    } else if (info.version == kVersion2) {
+        comp_id = static_cast<std::uint8_t>(in.get());
+        (void)in.get();
+        (void)in.get();
+        (void)in.get();
+    }
+
+    info.compression = static_cast<CompressionId>(comp_id);
+    info.encryption = static_cast<EncryptionId>(enc_id);
+    info.encrypted = info.version >= kVersion3 && enc_id != 0;
+    info.has_metadata = (flags & kFlagsMetadata) != 0;
+
+    const std::uint32_t entry_count = read_u32(in);
+    if (info.version == kVersion1) (void)read_u32(in);  // reserved
+    (void)read_u32(in);                                // data_off
+    if (info.version >= kVersion3) {
+        (void)read_u32(in);  // kdf iterations
+        for (int i = 0; i < 16; ++i) (void)in.get();
+        for (int i = 0; i < 24; ++i) (void)in.get();
+    }
+    if (!in) {
+        error = "归档头损坏";
+        return std::nullopt;
+    }
+    if (entry_count > 10000000u) {
+        error = "归档条目数异常";
+        return std::nullopt;
+    }
+
+    info.entry_count = entry_count;
+    info.entries.reserve(entry_count);
+
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        const std::uint16_t path_len = read_u16(in);
+        if (!in || path_len == 0) {
+            error = "归档损坏（读路径长度失败）";
+            return std::nullopt;
+        }
+
+        std::string rel(path_len, '\0');
+        in.read(rel.data(), static_cast<std::streamsize>(path_len));
+
+        PackEntryInfo entry;
+        entry.path = rel;
+        if (info.version >= kVersion2) {
+            entry.original_size = read_u64(in);
+            entry.stored_size = read_u64(in);
+            entry.crc32 = read_u32(in);
+            const std::uint8_t stored_comp =
+                static_cast<std::uint8_t>(in.get());
+            entry.compression = static_cast<CompressionId>(stored_comp);
+            if (info.version >= kVersion3 && info.encrypted) {
+                for (int j = 0; j < 16; ++j) (void)in.get();
+            }
+        } else {
+            entry.original_size = read_u64(in);
+            entry.stored_size = entry.original_size;
+            (void)read_u32(in);  // v1 checksum
+        }
+
+        if (!in) {
+            error = "归档损坏（读条目头失败）：" + rel;
+            return std::nullopt;
+        }
+        if (info.version == kVersion4) {
+            const std::uint32_t meta_len = read_u32(in);
+            if (!in || meta_len > archive_size) {
+                error = "归档损坏（元数据长度异常）：" + rel;
+                return std::nullopt;
+            }
+            in.seekg(static_cast<std::streamoff>(meta_len), std::ios::cur);
+        }
+        if (entry.stored_size > archive_size) {
+            error = "归档损坏（条目大小异常）：" + rel;
+            return std::nullopt;
+        }
+        in.seekg(static_cast<std::streamoff>(entry.stored_size),
+                 std::ios::cur);
+        if (!in) {
+            error = "归档损坏（数据被截断）：" + rel;
+            return std::nullopt;
+        }
+        info.entries.push_back(std::move(entry));
+    }
+
+    return info;
+}
+
 }  // namespace backup
