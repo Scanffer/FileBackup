@@ -6,6 +6,7 @@
 #include "algorithm.h"
 #include "filter.h"
 #include "metadata.h"
+#include "progress.h"
 
 /*
 VBAK 归档格式（全部小端）
@@ -93,6 +94,9 @@ struct PackOptions {
 
     /// 是否把文件元数据（权限/属主/时间戳/属性/ACL）写入归档。
     bool keep_metadata = true;
+
+    /// 可选进度回调（每处理完一个文件调用一次）。
+    ProgressFn progress;
 };
 
 struct PackResult {
@@ -107,6 +111,7 @@ struct UnpackOptions {
     bool overwrite = true;          ///< 目标已存在时是否覆盖
     std::string password;           ///< 加密归档需要
     bool restore_metadata = true;   ///< 还原 v4 归档里的元数据
+    ProgressFn progress;            ///< 可选进度回调
 };
 
 struct UnpackResult {

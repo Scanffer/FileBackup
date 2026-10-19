@@ -4,6 +4,7 @@
 #include <filesystem>
 
 #include "filter.h"
+#include "progress.h"
 
 namespace backup {
 
@@ -14,6 +15,7 @@ struct MirrorOptions {
 
     Filter filter;               ///< 六维筛选；空表示全选
     bool keep_metadata = true;   ///< 写 manifest 并保存元数据
+    ProgressFn progress;         ///< 可选进度回调
 };
 
 struct MirrorResult {
@@ -34,6 +36,7 @@ struct MirrorRestoreOptions {
     std::filesystem::path dst;   ///< 还原目标
     bool overwrite = true;
     bool restore_metadata = true;  ///< 读取 manifest 并还原元数据
+    ProgressFn progress;           ///< 可选进度回调
 };
 
 /// 目录镜像还原：复制文件树；若存在 manifest 且 restore_metadata=true，

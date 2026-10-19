@@ -239,6 +239,10 @@ PackResult pack_directory(const PackOptions& opts) {
     std::ofstream out(opts.archive, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("无法创建归档文件");
 
+    Progress progress;
+    progress.entries_total = files.size();
+    for (const FileEntry& entry : files) progress.bytes_total += entry.size;
+
     const bool encrypted = opts.encryption != EncryptionId::None;
     const std::uint16_t version = kVersion4;
     std::uint8_t flags = encrypted ? kFlagsEncrypted : 0;
@@ -348,6 +352,17 @@ PackResult pack_directory(const PackOptions& opts) {
 
         ++result.entries_written;
         result.bytes_written += original.size();
+
+        if (opts.progress) {
+            ++progress.entries_done;
+            progress.bytes_done += original.size();
+            progress.current = entry.relative_path;
+            try {
+                opts.progress(progress);
+            } catch (...) {
+                // 进度回调不应影响备份本身。
+            }
+        }
     }
 
     if (!out) throw std::runtime_error("写归档失败");
@@ -443,6 +458,20 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
     if (ec) throw std::runtime_error("无法创建目标目录：" + ec.message());
 
     UnpackResult result;
+    Progress progress;
+    progress.entries_total = entry_count;
+    auto report_progress = [&](const std::string& rel,
+                               std::uint64_t bytes) {
+        if (!opts.progress) return;
+        ++progress.entries_done;
+        progress.bytes_done += bytes;
+        progress.current = rel;
+        try {
+            opts.progress(progress);
+        } catch (...) {
+            // 进度回调不应影响还原本身。
+        }
+    };
 
     for (std::uint32_t i = 0; i < entry_count; ++i) {
         const std::uint16_t path_len = read_u16(in);
@@ -539,6 +568,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
         if (!opts.overwrite && std::filesystem::exists(to, ec)) {
             ++result.entries_read;
             result.bytes_read += orig_size;
+            report_progress(rel, orig_size);
             continue;
         }
 
@@ -571,6 +601,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
 
         ++result.entries_read;
         result.bytes_read += orig_size;
+        report_progress(rel, orig_size);
     }
 
     return result;

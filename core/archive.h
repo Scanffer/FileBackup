@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,23 +9,13 @@
 #include "algorithm.h"
 #include "filter.h"
 #include "metadata.h"
+#include "progress.h"
 #include "types.h"
 
 namespace backup {
 
 /// 目录镜像模式使用的 manifest 文件名（放在备份根目录下）。
 extern const char* const kManifestFileName;
-
-/// 单调进度回调。备份/还原每处理完一个条目调用一次。
-struct Progress {
-    std::uint64_t entries_done = 0;
-    std::uint64_t entries_total = 0;
-    std::uint64_t bytes_done = 0;
-    std::uint64_t bytes_total = 0;
-    std::string current;  ///< 当前/刚处理完的相对路径（UTF-8）
-};
-
-using ProgressFn = std::function<void(const Progress&)>;
 
 struct ArchiveOptions {
     std::filesystem::path source;

@@ -36,18 +36,22 @@ struct TaskOutcome {
     std::string message;              ///< 给用户看的一行结果说明
 };
 
+/// 任务体用它上报进度：percent 0–99（100 由任务完成时统一设置），
+/// message 是当前阶段的一句话（如 "正在备份：docs/a.txt (3/10)"）。
+using TaskReporter = std::function<void(int percent, std::string message)>;
+
 /// 任务体。**抛异常 = 任务失败**，异常消息即 error。
 ///
 /// 它跑在 TaskManager 的 worker 线程里，所以可以放心做阻塞的文件操作；
 /// 但异常消息绝对不能拼进密码（调用方负责，见 http_server.cpp）。
-using TaskBody = std::function<TaskOutcome()>;
+using TaskBody = std::function<TaskOutcome(TaskReporter)>;
 
 /// 任务的一次快照。纯值语义，可以安全地跨线程/跨 handler 传递。
 struct TaskInfo {
     std::string id;                  ///< 形如 "task-1"
     std::string kind;                ///< "backup" / "restore"
     TaskState state = TaskState::Queued;
-    int progress = 0;                ///< 0 / 50 / 100 粗粒度
+    int progress = 0;                ///< 0–99 运行中，100=完成
     std::string message;             ///< 当前阶段的一句话（排队中/正在打包…/完成）
     std::string error;               ///< 仅失败时非空
     nlohmann::json result = nullptr; ///< 仅成功时非空

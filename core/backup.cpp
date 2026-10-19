@@ -157,6 +157,20 @@ MirrorResult mirror_directory(const MirrorOptions& opts) {
     MirrorResult result;
     result.entries_filtered = filtered;
 
+    Progress progress;
+    progress.entries_total = files.size();
+    for (const FileEntry& entry : files) progress.bytes_total += entry.size;
+    auto report_progress = [&](const FileEntry& entry) {
+        if (!opts.progress) return;
+        ++progress.entries_done;
+        progress.bytes_done += entry.size;
+        progress.current = entry.relative_path;
+        try {
+            opts.progress(progress);
+        } catch (...) {
+        }
+    };
+
     for (const FileEntry& entry : files) {
         const fs::path rel = path_from_u8(entry.relative_path);
         const fs::path from = opts.src / rel;
@@ -182,6 +196,7 @@ MirrorResult mirror_directory(const MirrorOptions& opts) {
         } else {
             ++result.files_skipped;
         }
+        report_progress(entry);
     }
 
     if (opts.keep_metadata) {
@@ -226,7 +241,23 @@ MirrorResult restore_mirror(const MirrorRestoreOptions& opts) {
     }
 
     MirrorResult result;
-    for (const FileEntry& entry : list_files(opts.src)) {
+    const std::vector<FileEntry> files = list_files(opts.src);
+
+    Progress progress;
+    progress.entries_total = files.size();
+    for (const FileEntry& entry : files) progress.bytes_total += entry.size;
+    auto report_progress = [&](const FileEntry& entry) {
+        if (!opts.progress) return;
+        ++progress.entries_done;
+        progress.bytes_done += entry.size;
+        progress.current = entry.relative_path;
+        try {
+            opts.progress(progress);
+        } catch (...) {
+        }
+    };
+
+    for (const FileEntry& entry : files) {
         if (entry.relative_path == kManifestFileName) continue;
 
         const fs::path rel = path_from_u8(entry.relative_path);
@@ -251,6 +282,7 @@ MirrorResult restore_mirror(const MirrorRestoreOptions& opts) {
                 }
             }
         }
+        report_progress(entry);
     }
 
     return result;

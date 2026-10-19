@@ -356,7 +356,19 @@ struct BackupTaskParams {
 };
 
 TaskBody make_backup_body(BackupTaskParams params) {
-    return [params = std::move(params)]() -> TaskOutcome {
+    return [params = std::move(params)](TaskReporter report) -> TaskOutcome {
+        const auto progress_cb = [report](const Progress& p) {
+            if (!report) return;
+            int percent = 0;
+            if (p.entries_total > 0) {
+                percent = static_cast<int>(100ULL * p.entries_done /
+                                           p.entries_total);
+            }
+            report(percent, "正在备份：" + p.current + " (" +
+                                std::to_string(p.entries_done) + "/" +
+                                std::to_string(p.entries_total) + ")");
+        };
+
         TaskOutcome out;
         if (params.archive_mode) {
             PackOptions options;
@@ -368,6 +380,7 @@ TaskBody make_backup_body(BackupTaskParams params) {
             options.password = params.password;
             options.filter = params.filter;
             options.keep_metadata = params.keep_metadata;
+            options.progress = progress_cb;
             const PackResult result = pack_directory(options);
 
             out.result = {{"mode", "archive"},
@@ -384,6 +397,7 @@ TaskBody make_backup_body(BackupTaskParams params) {
             options.dst = path_from_u8(params.dst);
             options.filter = params.filter;
             options.keep_metadata = params.keep_metadata;
+            options.progress = progress_cb;
             const MirrorResult result = mirror_directory(options);
 
             out.result = {{"mode", "mirror"},
@@ -417,7 +431,19 @@ struct RestoreTaskParams {
 };
 
 TaskBody make_restore_body(RestoreTaskParams params) {
-    return [params = std::move(params)]() -> TaskOutcome {
+    return [params = std::move(params)](TaskReporter report) -> TaskOutcome {
+        const auto progress_cb = [report](const Progress& p) {
+            if (!report) return;
+            int percent = 0;
+            if (p.entries_total > 0) {
+                percent = static_cast<int>(100ULL * p.entries_done /
+                                           p.entries_total);
+            }
+            report(percent, "正在还原：" + p.current + " (" +
+                                std::to_string(p.entries_done) + "/" +
+                                std::to_string(p.entries_total) + ")");
+        };
+
         TaskOutcome out;
         if (params.from_archive) {
             UnpackOptions options;
@@ -425,6 +451,7 @@ TaskBody make_restore_body(RestoreTaskParams params) {
             options.dst = path_from_u8(params.dst);
             options.password = params.password;
             options.restore_metadata = params.restore_metadata;
+            options.progress = progress_cb;
             const UnpackResult result = unpack_archive(options);
 
             out.result = {{"mode", "archive"},
@@ -440,6 +467,7 @@ TaskBody make_restore_body(RestoreTaskParams params) {
             options.src = path_from_u8(params.src);
             options.dst = path_from_u8(params.dst);
             options.restore_metadata = params.restore_metadata;
+            options.progress = progress_cb;
             const MirrorResult result = restore_mirror(options);
 
             out.result = {{"mode", "mirror"},

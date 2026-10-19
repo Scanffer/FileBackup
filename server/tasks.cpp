@@ -112,16 +112,31 @@ struct TaskManager::Impl {
                 auto it = tasks.find(pending.id);
                 if (it == tasks.end()) continue;  // 理论上不会发生
                 it->second.state = TaskState::Running;
-                it->second.progress = 50;
+                // 刚开始执行时给 1，随后由 core 的 ProgressFn 覆盖成真实
+                // 百分比；不要写 50，否则用户会看到 50%→1% 的瞬时回跳。
+                it->second.progress = 1;
                 it->second.message = pending.running_message;
             }
 
             // 任务体在锁外跑：文件操作可能很慢，不能占着状态锁。
+            // reporter 允许 core 的 ProgressFn 把真实进度写回任务快照。
+            auto reporter = [this, id = pending.id](int percent,
+                                                    std::string message) {
+                std::lock_guard<std::mutex> lock(mutex);
+                auto it = tasks.find(id);
+                if (it == tasks.end()) return;
+                if (it->second.state != TaskState::Running) return;
+                if (percent < 1) percent = 1;
+                if (percent > 99) percent = 99;
+                it->second.progress = percent;
+                it->second.message = std::move(message);
+            };
+
             TaskOutcome outcome;
             std::string error;
             bool ok = true;
             try {
-                if (pending.body) outcome = pending.body();
+                if (pending.body) outcome = pending.body(reporter);
             } catch (const std::exception& e) {
                 ok = false;
                 error = e.what();
@@ -142,8 +157,8 @@ struct TaskManager::Impl {
                         it->second.result = std::move(outcome.result);
                     } else {
                         it->second.state = TaskState::Failed;
-                        // 停在运行阶段：50% 处失败，前端不会显示成「100% 完成」。
-                        it->second.progress = 50;
+                        // 保留最后一次真实进度（没有回调过就给 1，便于 UI 区分）。
+                        if (it->second.progress <= 0) it->second.progress = 1;
                         it->second.message = "失败";
                         it->second.error =
                             error.empty() ? std::string("未知错误") : error;
