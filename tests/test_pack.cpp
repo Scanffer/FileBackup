@@ -107,8 +107,9 @@ TEST_CASE("pack/unpack without compression roundtrip", "[pack]") {
 
     const backup::PackResult packed = backup::pack_directory(options);
     REQUIRE(packed.entries_written == 2);
-    // 不压缩时归档应该只比原始数据多一点点头部开销。
-    REQUIRE(fs::file_size(archive) < packed.bytes_written + 512);
+    // 不压缩时归档应该只比原始数据多一点头部开销。
+    // v4 每条目还带 MetaBlock（权限/时间戳/ACL 等），放宽到 4KB。
+    REQUIRE(fs::file_size(archive) < packed.bytes_written + 4096);
 
     backup::UnpackOptions unpack;
     unpack.archive = archive;
@@ -151,6 +152,89 @@ TEST_CASE("pack falls back to raw storage for incompressible bytes", "[pack]") {
     unpack.dst = dst;
     backup::unpack_archive(unpack);
     REQUIRE(read_text(dst / "random.bin") == blob);
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("pack applies six-dimension filter", "[pack][filter]") {
+    const fs::path base = fresh_temp_dir();
+    const fs::path src = base / "src";
+    write_text(src / "docs" / "a.txt", "keep me");
+    write_text(src / "docs" / "b.log", "exclude me by name");
+    write_text(src / "pics" / "c.jpg", "exclude me by path");
+    write_text(src / "root.tmp", "exclude me by include-only semantics");
+
+    std::string filter_error;
+    auto filter = backup::Filter::from_json(
+        std::string(R"([
+            {"action":"include","path":"docs/**"},
+            {"action":"exclude","name":"*.log"}
+        ])"),
+        filter_error);
+    REQUIRE(filter.has_value());
+    REQUIRE(filter_error.empty());
+
+    backup::PackOptions options;
+    options.src = src;
+    options.archive = base / "filtered.vbak";
+    options.compression = backup::CompressionId::None;
+    options.filter = *filter;
+    options.keep_metadata = false;
+
+    const backup::PackResult packed = backup::pack_directory(options);
+    REQUIRE(packed.entries_written == 1);
+
+    backup::UnpackOptions unpack;
+    unpack.archive = options.archive;
+    unpack.dst = base / "out";
+    backup::unpack_archive(unpack);
+
+    REQUIRE(fs::exists(unpack.dst / "docs" / "a.txt"));
+    REQUIRE_FALSE(fs::exists(unpack.dst / "docs" / "b.log"));
+    REQUIRE_FALSE(fs::exists(unpack.dst / "pics" / "c.jpg"));
+    REQUIRE_FALSE(fs::exists(unpack.dst / "root.tmp"));
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST_CASE("pack writes and restores metadata", "[pack][metadata]") {
+    const fs::path base = fresh_temp_dir();
+    const fs::path src = base / "src";
+    write_text(src / "meta.txt", "metadata payload");
+
+    std::string error;
+    auto meta = backup::read_metadata(src / "meta.txt", error);
+    REQUIRE(meta.has_value());
+
+    // 选一个 100ns 对齐的 mtime，保证 FILETIME 往返无损。
+    meta->mtime_ns = 1234567890000000000LL;
+    std::string apply_error;
+    REQUIRE(backup::apply_metadata(src / "meta.txt", *meta, apply_error));
+
+    backup::PackOptions options;
+    options.src = src;
+    options.archive = base / "meta.vbak";
+    options.compression = backup::CompressionId::None;
+    options.keep_metadata = true;
+
+    // 重新读一遍，作为写进归档的期望值。
+    auto expected = backup::read_metadata(src / "meta.txt", error);
+    REQUIRE(expected.has_value());
+    REQUIRE(backup::pack_directory(options).entries_written == 1);
+
+    backup::UnpackOptions unpack;
+    unpack.archive = options.archive;
+    unpack.dst = base / "out";
+    unpack.restore_metadata = true;
+    backup::unpack_archive(unpack);
+
+    auto restored = backup::read_metadata(unpack.dst / "meta.txt", error);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->mtime_ns == expected->mtime_ns);
+    REQUIRE(restored->mode == expected->mode);
+    REQUIRE(restored->win_attrs == expected->win_attrs);
 
     std::error_code ec;
     fs::remove_all(base, ec);

@@ -4,6 +4,8 @@
 #include <filesystem>
 
 #include "algorithm.h"
+#include "filter.h"
+#include "metadata.h"
 
 /*
 VBAK 归档格式（全部小端）
@@ -51,11 +53,26 @@ v3（加密，存在加密参数时写出）
     iv u8[16]       ← 实际使用前 iv_size 字节（AES 16 / ChaCha 12 / RC4 16）
     data stor_size 字节
 
+v4（当前版本：可选元数据）
+  Header 64 字节，布局与 v3 相同，只把 version 改为 4：
+    高亮：flags bit0 = 加密，bit1 = 条目带元数据（MetaBlock）
+  Entry
+    path_len u16 + path
+    orig_size u64
+    stor_size u64（含 AEAD tag / CBC padding）
+    crc32 u32（原始内容）
+    comp_id u8
+    [若 flags.bit0=1] iv u8[16]
+    meta_len u32
+    meta meta_len 字节（metadata_to_bytes 的版本化二进制；0 表示无）
+    data stor_size 字节
+
 约定：
   - 每条目独立压缩、独立 IV 加密；次序是「先压缩，再加密」；
   - 密码不写入归档；PBKDF2 派生一次密钥，供所有条目使用；
   - 不可压缩的文件仍会以 comp_id=0 存储，避免归档变大；
-  - v1/v2 归档仍可解包；新归档在有加密参数时写 v3，否则写 v2。
+  - keep_metadata=true 时写 v4 并把元数据放进每条目；
+  - v1/v2/v3 归档仍可解包；新归档写 v4。
 */
 
 namespace backup {
@@ -67,9 +84,15 @@ struct PackOptions {
     CompressionId compression = CompressionId::None;
     int compression_level = 6;
 
-    /// 加密算法；非 None 时写出 v3 归档，password 必须非空。
+    /// 加密算法；非 None 时写出加密归档，password 必须非空。
     EncryptionId encryption = EncryptionId::None;
     std::string password;
+
+    /// 六维筛选；空 Filter 表示全选。
+    Filter filter;
+
+    /// 是否把文件元数据（权限/属主/时间戳/属性/ACL）写入归档。
+    bool keep_metadata = true;
 };
 
 struct PackResult {
@@ -82,7 +105,8 @@ struct UnpackOptions {
     std::filesystem::path archive;  ///< 输入 .vbak 文件
     std::filesystem::path dst;      ///< 还原目标目录
     bool overwrite = true;          ///< 目标已存在时是否覆盖
-    std::string password;           ///< v3 归档需要
+    std::string password;           ///< 加密归档需要
+    bool restore_metadata = true;   ///< 还原 v4 归档里的元数据
 };
 
 struct UnpackResult {

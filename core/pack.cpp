@@ -1,6 +1,7 @@
 #include "pack.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -10,6 +11,7 @@
 
 #include "algorithm.h"
 #include "fs_utils.h"
+#include "metadata.h"
 
 namespace backup {
 namespace {
@@ -18,11 +20,14 @@ constexpr char kMagic[4] = {'V', 'B', 'A', 'K'};
 constexpr std::uint16_t kVersion1 = 1;
 constexpr std::uint16_t kVersion2 = 2;
 constexpr std::uint16_t kVersion3 = 3;
+constexpr std::uint16_t kVersion4 = 4;
 constexpr std::uint32_t kHeaderV1 = 20;
 constexpr std::uint32_t kHeaderV2 = 20;
 constexpr std::uint32_t kHeaderV3 = 64;
+constexpr std::uint32_t kHeaderV4 = 64;
 constexpr std::uint32_t kKdfIterations = 100000;
 constexpr std::uint8_t kFlagsEncrypted = 0x01;
+constexpr std::uint8_t kFlagsMetadata = 0x02;
 
 // ---- 小端读写 ----
 // 归档格式定死小端；不依赖主机字节序，跨平台读得出来。
@@ -104,6 +109,40 @@ Bytes read_file(const std::filesystem::path& path,
     return data;
 }
 
+/// std::filesystem 的 file_clock 没有跨实现的标准纪元转换；
+/// 这里用「当前时刻」求偏移，误差在毫秒级以内，足够筛选「最近 N 天」。
+std::int64_t file_mtime_ns(const std::filesystem::path& path) {
+    std::error_code ec;
+    const auto ft = std::filesystem::last_write_time(path, ec);
+    if (ec) return 0;
+
+    using namespace std::chrono;
+    const auto file_now = std::filesystem::file_time_type::clock::now();
+    const auto sys_now = system_clock::now();
+    const auto offset =
+        sys_now.time_since_epoch() -
+        duration_cast<system_clock::duration>(file_now.time_since_epoch());
+    const auto since_epoch =
+        duration_cast<system_clock::duration>(ft.time_since_epoch()) + offset;
+    return duration_cast<nanoseconds>(since_epoch).count();
+}
+
+std::string filename_u8(const std::string& relative_path) {
+    const std::filesystem::path path = path_from_u8(relative_path);
+    return path.filename().generic_u8string();
+}
+
+/// 只有规则里真的出现 user 维度时才去读属主（Windows 安全 API 很慢）。
+bool filter_uses_user(const Filter& filter) {
+    if (filter.empty()) return false;
+    const nlohmann::json rules = filter.to_json();
+    if (!rules.is_array()) return false;
+    for (const auto& rule : rules) {
+        if (rule.is_object() && rule.contains("user")) return true;
+    }
+    return false;
+}
+
 /// 检查归档条目里的相对路径，拒绝绝对路径和 ".."（防 zip-slip）。
 std::filesystem::path safe_relative_path(const std::string& rel) {
     if (rel.empty()) throw std::runtime_error("归档包含空路径");
@@ -176,34 +215,51 @@ PackResult pack_directory(const PackOptions& opts) {
         }
     }
 
-    const std::vector<FileEntry> files = list_files(opts.src);
+    std::vector<FileEntry> files = list_files(opts.src);
+    if (!opts.filter.empty()) {
+        const bool needs_owner = filter_uses_user(opts.filter);
+        std::vector<FileEntry> kept;
+        kept.reserve(files.size());
+        for (const FileEntry& entry : files) {
+            const std::filesystem::path from =
+                opts.src / path_from_u8(entry.relative_path);
+            FilterContext ctx;
+            ctx.relative_path = entry.relative_path;
+            ctx.name = filename_u8(entry.relative_path);
+            ctx.size = entry.size;
+            ctx.mtime_ns = file_mtime_ns(from);
+            ctx.type = EntryType::File;
+            ctx.uid = 0;
+            if (needs_owner) ctx.owner = file_owner_name(from);
+            if (opts.filter.match(ctx)) kept.push_back(entry);
+        }
+        files = std::move(kept);
+    }
 
     std::ofstream out(opts.archive, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("无法创建归档文件");
 
     const bool encrypted = opts.encryption != EncryptionId::None;
-    const std::uint16_t version = encrypted ? kVersion3 : kVersion2;
+    const std::uint16_t version = kVersion4;
+    std::uint8_t flags = encrypted ? kFlagsEncrypted : 0;
+    if (opts.keep_metadata) flags |= kFlagsMetadata;
 
     // ---- Header ----
     out.write(kMagic, 4);
     write_u16(out, version);
-    write_u16(out, encrypted ? kFlagsEncrypted : 0);
+    write_u16(out, flags);
     out.put(static_cast<char>(opts.compression));
-    if (version == kVersion3) {
+    {
         out.put(static_cast<char>(opts.encryption));
         out.put('\0');
         out.put('\0');
         write_u32(out, static_cast<std::uint32_t>(files.size()));
-        write_u32(out, kHeaderV3);
-        write_u32(out, kKdfIterations);
-        out.write(reinterpret_cast<const char*>(salt.data()), 16);
+        write_u32(out, kHeaderV4);
+        write_u32(out, encrypted ? kKdfIterations : 0);
+        std::uint8_t salt_field[16] = {};
+        if (!salt.empty()) std::memcpy(salt_field, salt.data(), salt.size());
+        out.write(reinterpret_cast<const char*>(salt_field), 16);
         for (int i = 0; i < 24; ++i) out.put('\0');
-    } else {
-        out.put('\0');
-        out.put('\0');
-        out.put('\0');
-        write_u32(out, static_cast<std::uint32_t>(files.size()));
-        write_u32(out, kHeaderV2);
     }
     if (!out) throw std::runtime_error("写归档头失败");
 
@@ -214,6 +270,13 @@ PackResult pack_directory(const PackOptions& opts) {
 
         if (entry.relative_path.size() > 0xFFFF) {
             throw std::runtime_error("路径过长：" + entry.relative_path);
+        }
+
+        Bytes metadata_bytes;
+        if (opts.keep_metadata) {
+            std::string meta_error;
+            const auto meta = read_metadata(from, meta_error);
+            if (meta) metadata_bytes = metadata_to_bytes(*meta);
         }
 
         const Bytes original = read_file(from, entry.relative_path);
@@ -260,12 +323,20 @@ PackResult pack_directory(const PackOptions& opts) {
         write_u64(out, static_cast<std::uint64_t>(stored.size()));
         write_u32(out, checksum);
         out.put(static_cast<char>(stored_comp));
-        if (version == kVersion3) {
+        if (encrypted) {
             std::uint8_t iv_field[16] = {};
             if (!iv.empty()) {
                 std::memcpy(iv_field, iv.data(), iv.size());
             }
             out.write(reinterpret_cast<const char*>(iv_field), 16);
+        }
+        if (version == kVersion4) {
+            write_u32(out, static_cast<std::uint32_t>(metadata_bytes.size()));
+            if (!metadata_bytes.empty()) {
+                out.write(
+                    reinterpret_cast<const char*>(metadata_bytes.data()),
+                    static_cast<std::streamsize>(metadata_bytes.size()));
+            }
         }
         if (!stored.empty()) {
             out.write(reinterpret_cast<const char*>(stored.data()),
@@ -303,18 +374,20 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
     }
 
     const std::uint16_t version = read_u16(in);
-    if (version != kVersion1 && version != kVersion2 && version != kVersion3) {
+    if (version != kVersion1 && version != kVersion2 && version != kVersion3 &&
+        version != kVersion4) {
         throw std::runtime_error("不支持的归档版本：" +
                                  std::to_string(version));
     }
-    (void)read_u16(in);  // flags
+    const std::uint16_t flags = read_u16(in);
+    (void)flags;  // bit0/bit1 目前仅作记录，实际以条目字段为准
 
     std::uint8_t comp_id_header = 0;
     std::uint8_t enc_id_header = 0;
     std::uint8_t salt_bytes[16] = {};
     std::uint32_t kdf_iterations = 0;
 
-    if (version == kVersion3) {
+    if (version >= kVersion3) {
         comp_id_header = static_cast<std::uint8_t>(in.get());
         enc_id_header = static_cast<std::uint8_t>(in.get());
         (void)in.get();  // reserved
@@ -331,7 +404,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
     if (version == kVersion1) (void)read_u32(in);  // reserved
     (void)read_u32(in);                            // data_off
 
-    if (version == kVersion3) {
+    if (version >= kVersion3) {
         kdf_iterations = read_u32(in);
         in.read(reinterpret_cast<char*>(salt_bytes), 16);
         for (int i = 0; i < 24; ++i) (void)in.get();
@@ -340,7 +413,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
 
     std::unique_ptr<ICipher> cipher;
     Bytes key;
-    if (version == kVersion3 && enc_id_header != 0) {
+    if (version >= kVersion3 && enc_id_header != 0) {
         if (opts.password.empty()) {
             throw std::runtime_error("归档已加密，需要密码");
         }
@@ -385,13 +458,14 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
         std::uint32_t checksum = 0;
         std::uint8_t entry_comp = 0;
         std::uint8_t iv_field[16] = {};
+        std::uint32_t meta_len = 0;
 
-        if (version == kVersion2 || version == kVersion3) {
+        if (version >= kVersion2) {
             orig_size = read_u64(in);
             stored_size = read_u64(in);
             checksum = read_u32(in);
             entry_comp = static_cast<std::uint8_t>(in.get());
-            if (version == kVersion3) {
+            if (version >= kVersion3 && enc_id_header != 0) {
                 in.read(reinterpret_cast<char*>(iv_field), 16);
             }
         } else {
@@ -403,6 +477,17 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
         if (!in) throw std::runtime_error("归档损坏（读条目头失败）");
         if (stored_size > archive_size) {
             throw std::runtime_error("归档损坏（条目大小异常）：" + rel);
+        }
+
+        Bytes metadata_bytes;
+        if (version == kVersion4) {
+            meta_len = read_u32(in);
+            if (!in || meta_len > archive_size) {
+                throw std::runtime_error("归档损坏（元数据长度异常）：" + rel);
+            }
+            if (meta_len > 0) {
+                metadata_bytes = read_bytes(in, meta_len, "metadata");
+            }
         }
 
         const std::filesystem::path rel_path = safe_relative_path(rel);
@@ -444,7 +529,7 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
             data = std::move(stored);
         }
 
-        if (version == kVersion2 || version == kVersion3) {
+        if (version >= kVersion2) {
             const std::uint32_t actual = crc32(data.data(), data.size());
             if (actual != checksum) {
                 throw std::runtime_error("CRC32 校验失败：" + rel);
@@ -471,6 +556,18 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
                       static_cast<std::streamsize>(data.size()));
         }
         if (!out) throw std::runtime_error("写文件失败：" + rel);
+        out.close();
+        if (!out) throw std::runtime_error("写文件失败：" + rel);
+
+        if (opts.restore_metadata && !metadata_bytes.empty()) {
+            std::string meta_error;
+            const auto meta = metadata_from_bytes(metadata_bytes, meta_error);
+            if (meta) {
+                std::string apply_error;
+                // 权限不足/跨机 ACL 等失败只降级为忽略，不能中断还原。
+                (void)apply_metadata(to, *meta, apply_error);
+            }
+        }
 
         ++result.entries_read;
         result.bytes_read += orig_size;

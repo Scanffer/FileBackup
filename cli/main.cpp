@@ -12,7 +12,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -114,6 +116,39 @@ bool launch_gui_app() {
 #endif
 }
 
+/// 是否出现某个不带值的开关（如 --no-metadata）。
+bool has_flag(int argc, wchar_t** argv, int start, const std::wstring& key) {
+    for (int i = start; i < argc; ++i) {
+        if (std::wstring(argv[i]) == key) return true;
+    }
+    return false;
+}
+
+/// 载入筛选规则：--filter '<json>' 或 --filter-file <文件>。
+std::optional<backup::Filter> load_filter(
+    const std::optional<std::wstring>& inline_json,
+    const std::optional<std::wstring>& file, std::string& error) {
+    std::string text;
+    if (inline_json) {
+        text = wide_to_utf8(*inline_json);
+    } else if (file) {
+        std::ifstream in(std::filesystem::path(*file), std::ios::binary);
+        if (!in) {
+            error = "无法打开筛选规则文件";
+            return std::nullopt;
+        }
+        text.assign(std::istreambuf_iterator<char>(in),
+                    std::istreambuf_iterator<char>());
+    } else {
+        error = "未提供筛选规则";
+        return std::nullopt;
+    }
+
+    auto filter = backup::Filter::from_json(text, error);
+    if (!filter) return std::nullopt;
+    return filter;
+}
+
 void print_usage(std::ostream& os) {
     os << "FileBackup-cli —— 文件备份软件（命令行）\n"
           "\n"
@@ -140,6 +175,11 @@ void print_usage(std::ostream& os) {
           "                         --encrypt aes256cbc --password 123456\n"
           "  FileBackup-cli restore --archive ./bak/docs.vbak --dst ./restored \\\n"
           "                         --password 123456\n"
+          "\n"
+          "筛选示例（备份时）：\n"
+          "  --filter '[{\"action\":\"include\",\"path\":\"docs/**\"},\n"
+          "             {\"action\":\"exclude\",\"name\":\"*.tmp\"}]'\n"
+          "  或 --filter-file rules.json；--no-metadata 可关闭元数据保存。\n"
           "\n"
           "图形界面是独立程序 FileBackup.exe，双击启动；调试用参数：\n"
           "  FileBackup.exe --port 8080 --browser --no-browser\n";
@@ -229,12 +269,22 @@ int main(int argc, char** argv) {
         const auto level = find_opt(argc, argv, 2, L"--level");
         const auto encrypt = find_opt(argc, argv, 2, L"--encrypt");
         const auto password = find_opt(argc, argv, 2, L"--password");
+        const auto filter_json = find_opt(argc, argv, 2, L"--filter");
+        const auto filter_file = find_opt(argc, argv, 2, L"--filter-file");
+        const bool no_metadata = has_flag(argc, argv, 2, L"--no-metadata");
+
+        if (filter_json && filter_file) {
+            std::cerr << "--filter 与 --filter-file 只能用一个。\n";
+            return 1;
+        }
 
         if (!src || !dst) {
             std::cerr << "用法：FileBackup-cli backup --src <目录> --dst <目标>\n"
                          "      加 --pack vbak 打包成单文件归档，可再指定\n"
                          "      --compress deflate --level 6\n"
-                         "      --encrypt aes256cbc --password <密码>\n";
+                         "      --encrypt aes256cbc --password <密码>\n"
+                         "      --filter '<JSON 规则>' 或 --filter-file <文件>\n"
+                         "      --no-metadata  不保存元数据\n";
             return 1;
         }
 
@@ -294,18 +344,33 @@ int main(int argc, char** argv) {
                     std::cerr << "--password 只在 --encrypt 时生效。\n";
                     return 1;
                 }
+                if (filter_json || filter_file) {
+                    std::string filter_error;
+                    auto filter =
+                        load_filter(filter_json, filter_file, filter_error);
+                    if (!filter) {
+                        std::cerr << "筛选规则无效：" << filter_error << "\n";
+                        return 1;
+                    }
+                    o.filter = *filter;
+                }
+                o.keep_metadata = !no_metadata;
 
                 const backup::PackResult r = backup::pack_directory(o);
                 std::cout << "打包完成（" << backup::to_string(o.compression);
                 if (o.encryption != backup::EncryptionId::None) {
                     std::cout << "，加密 " << backup::to_string(o.encryption);
                 }
+                if (!o.filter.empty()) std::cout << "，已应用筛选";
                 std::cout << "）：" << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
             } else {
-                if (compress || level || encrypt || password) {
+                if (compress || level || encrypt || password || filter_json ||
+                    filter_file || no_metadata) {
                     std::cerr << "--compress / --level / --encrypt / "
-                                 "--password 只在 --pack vbak 模式下生效。\n";
+                                 "--password / --filter / --no-metadata "
+                                 "只在 --pack vbak 模式下生效（镜像模式的"
+                                 "筛选/元数据将在下一阶段接入）。\n";
                     return 1;
                 }
                 backup::MirrorOptions o;
@@ -331,17 +396,19 @@ int main(int argc, char** argv) {
         const auto src = find_opt(argc, argv, 2, L"--src");
         const auto dst = find_opt(argc, argv, 2, L"--dst");
         const auto password = find_opt(argc, argv, 2, L"--password");
+        const bool no_metadata = has_flag(argc, argv, 2, L"--no-metadata");
 
         if (!dst || (!archive && !src)) {
             std::cerr
                 << "用法：FileBackup-cli restore --archive <归档> --dst <目录>\n"
                    "      或 FileBackup-cli restore --src <备份目录> --dst "
                    "<目录>\n"
-                   "      加密归档需加 --password <密码>\n";
+                   "      加密归档需加 --password <密码>\n"
+                   "      --no-metadata  不还原 v4 归档中的元数据\n";
             return 1;
         }
-        if (!archive && password) {
-            std::cerr << "--password 只在解包加密归档时使用。\n";
+        if (!archive && (password || no_metadata)) {
+            std::cerr << "--password / --no-metadata 只在解包归档时使用。\n";
             return 1;
         }
 
@@ -350,6 +417,7 @@ int main(int argc, char** argv) {
                 backup::UnpackOptions o;
                 o.archive = *archive;
                 o.dst = *dst;
+                o.restore_metadata = !no_metadata;
                 if (password) o.password = wide_to_utf8(*password);
                 const backup::UnpackResult r = backup::unpack_archive(o);
                 std::cout << "解包完成：" << r.entries_read << " 个文件，"
