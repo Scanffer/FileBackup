@@ -2,12 +2,16 @@ cmake_minimum_required(VERSION 3.20)
 
 # 文件备份软件 —— 软件开发综合实验
 # 详见 README.md（设计）
-project(FileBackup VERSION 0.1.0 LANGUAGES CXX)
+project(FileBackup VERSION 0.1.0 LANGUAGES C CXX)
 
 # ---- C++ 标准 ----
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# zstd 等第三方 C 库用 C11 就够。
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ---- 编译器口径：MinGW-w64 GCC ----
 # MinGW 和 MSVC 可能同时存在于 PATH 上，Ninja 生成器会静默挑一个能用的。
@@ -28,27 +32,27 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---- 单 exe 交付（README §3.4）----
 # -static 系列：不加的话 exe 会依赖 libstdc++-6.dll、libgcc_s_seh-1.dll、
 #   libwinpthread-1.dll —— 换一台没装 MinGW 的机器就跑不起来。
-# -municode：让 CRT 用 wmain 而不是 main 作为入口。CLI 必须用 wmain，
-#   否则拿不到 UTF-16 参数，中文路径会让程序崩溃（见 cli/main.cpp 的说明）。
+#
+# -municode 不放在这里：它会让所有可执行文件都要求 wWinMain，而测试程序
+# 用的是普通的 main。只给 FileBackup.exe 单独加（见 cli/CMakeLists.txt）。
 #
 # 验收方法：objdump -p build/mingw-release/FileBackup.exe | grep "DLL Name"
 # 输出里不应出现上面那三个 dll。
 if(MINGW)
-    add_link_options(-static -static-libgcc -static-libstdc++ -municode)
+    add_link_options(-static -static-libgcc -static-libstdc++)
 endif()
 
 # ---------------------------------------------------------------------------
 # 子目录
 #   分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
 #   可被 cli 与 server 共同链接。
+#
+#   顺序注意：third_party 要先于 core —— core 链接 zstd/json 的 target。
 # ---------------------------------------------------------------------------
+add_subdirectory(third_party)  # httplib / WebView2 / zstd / json / Catch2
 add_subdirectory(core)         # backup_core 静态库：备份引擎
-add_subdirectory(third_party)  # cpp_httplib：只有 include 路径的 INTERFACE 目标
 add_subdirectory(server)       # backup_server 静态库：Web GUI 的 HTTP 层（无 main）
 add_subdirectory(cli)          # FileBackup.exe：唯一入口，链接 core + server
 
-# ---------------------------------------------------------------------------
-# 第三方依赖：目前只有一个 cpp-httplib（单头文件，见 third_party/）。
-# 压缩（M2）、加密（M3）等其余依赖仍不提前接线 ——
-# 免得项目还没用到它们就先被环境问题卡住。
-# ---------------------------------------------------------------------------
+enable_testing()
+add_subdirectory(tests)        # backup_tests：Catch2 单元测试

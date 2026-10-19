@@ -1,17 +1,18 @@
 # backup_core —— 备份引擎静态库
 #
-# 目录规划见 README §8。当前内容：
-#   version.cpp   版本号
-#   fs_utils.cpp  目录遍历
-#
-# 依赖：无，全部使用 C++17 标准库。
-# 需要第三方库时再逐个引入（压缩 M2、加密 M3、打包 M6）。
+# 分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
+# 可被 cli 与 server 共同链接。
 
 add_library(backup_core STATIC
     version.cpp
     fs_utils.cpp
     backup.cpp
     pack.cpp
+    compress.cpp
+    crypto.cpp
+    filter.cpp
+    metadata.cpp
+    archive.cpp
 )
 
 target_include_directories(backup_core
@@ -22,3 +23,16 @@ target_include_directories(backup_core
 target_compile_definitions(backup_core
     PRIVATE FB_VERSION="${PROJECT_VERSION}"
 )
+
+# 第三方依赖：
+#   fb_json 是 PUBLIC —— filter.h / metadata.h 的公开头里用了 nlohmann::json，
+#   链接 backup_core 的 cli/server/tests 也必须能找到这个头。
+target_link_libraries(backup_core
+    PUBLIC fb_json
+    PRIVATE libzstd_static
+)
+
+if(WIN32)
+    # 加密算法走 Windows CNG（AES / ChaCha20-Poly1305 / PBKDF2）。
+    target_link_libraries(backup_core PRIVATE bcrypt)
+endif()

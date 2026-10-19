@@ -54,6 +54,13 @@ target_link_libraries(FileBackup
     PRIVATE backup_server
 )
 
+# -municode：让 CRT 用 wmain 而不是 main 作为入口。CLI 必须用 wmain，
+# 否则拿不到 UTF-16 参数，中文路径会让程序崩溃（见 cli/main.cpp 的说明）。
+# 只给主程序加 —— 测试程序用的是普通 main。
+if(MINGW)
+    target_link_options(FileBackup PRIVATE -municode)
+endif()
+
 # 产物应为单 exe，无需随附任何 DLL（README §3.4）。
 # 由根 CMakeLists.txt 里 MINGW 分支的 -static 系列开关保证。
 set_target_properties(FileBackup PROPERTIES
