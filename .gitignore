@@ -50,6 +50,7 @@ backup-*/
 .restore-tmp/
 
 # ---- 本地测试残留 ----
+/.filebackup_test_tmp/
 /test_src/ 
 /test_bak/
 /test_restore/

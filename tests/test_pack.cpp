@@ -8,17 +8,14 @@
 
 #include "algorithm.h"
 #include "pack.h"
+#include "test_tmp.h"
 
 namespace {
 
 namespace fs = std::filesystem;
 
 fs::path fresh_temp_dir() {
-    const fs::path dir = fs::temp_directory_path() / "filebackup_pack_test";
-    std::error_code ec;
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir, ec);
-    return dir;
+    return backup_test::fresh_dir("filebackup_pack_test");
 }
 
 void write_text(const fs::path& path, const std::string& text) {
