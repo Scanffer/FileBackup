@@ -574,6 +574,58 @@ private:
     std::wstring url_;
 };
 
+// 窗口尺寸（96 DPI 下的逻辑像素）。
+//
+// 1040×720 是方案 B 双栏工作台的舒适尺寸：左栏放主设置，右栏放任务/结果。
+// 最小 900×600 保证窄屏拖动时仍能完整显示单列回退布局；再小页面就只能
+// 靠内部滚动，体验很差，所以不让拖到更小。
+constexpr int kDefaultWindowWidth = 1040;
+constexpr int kDefaultWindowHeight = 720;
+constexpr int kMinWindowWidth = 900;
+constexpr int kMinWindowHeight = 600;
+
+/// 按 DPI 缩放后的默认窗口矩形，并在工作区内居中。
+///
+/// 高缩放/小屏幕上 1040×720 可能超出工作区，这时把宽高夹到工作区的 90%
+/// （优先保证高度不越界、不把任务栏盖住），但不会小于最小尺寸。
+RECT DefaultWindowRect(HWND hwnd, UINT dpi) {
+    const int scale = static_cast<int>(dpi);
+    int width = MulDiv(kDefaultWindowWidth, scale, 96);
+    int height = MulDiv(kDefaultWindowHeight, scale, 96);
+    const int min_width = MulDiv(kMinWindowWidth, scale, 96);
+    const int min_height = MulDiv(kMinWindowHeight, scale, 96);
+
+    RECT rect{};
+    HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(monitor, &mi)) {
+        // 拿不到工作区（理论上不会发生）：退回左上角 + 默认尺寸。
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = width;
+        rect.bottom = height;
+        return rect;
+    }
+
+    const int work_width = mi.rcWork.right - mi.rcWork.left;
+    const int work_height = mi.rcWork.bottom - mi.rcWork.top;
+    const int max_width = work_width * 9 / 10;
+    const int max_height = work_height * 9 / 10;
+
+    if (width > max_width) width = max_width;
+    if (height > max_height) height = max_height;
+    // 夹到 90% 之后仍不能比最小尺寸还小（极小工作区的兜底）。
+    if (width < min_width) width = min_width;
+    if (height < min_height) height = min_height;
+
+    rect.left = mi.rcWork.left + (work_width - width) / 2;
+    rect.top = mi.rcWork.top + (work_height - height) / 2;
+    rect.right = rect.left + width;
+    rect.bottom = rect.top + height;
+    return rect;
+}
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_SIZE:
@@ -612,8 +664,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
 
             const UINT dpi = GetDpiForWindow(hwnd);
-            info->ptMinTrackSize.x = MulDiv(720, static_cast<int>(dpi), 96);
-            info->ptMinTrackSize.y = MulDiv(480, static_cast<int>(dpi), 96);
+            info->ptMinTrackSize.x =
+                MulDiv(kMinWindowWidth, static_cast<int>(dpi), 96);
+            info->ptMinTrackSize.y =
+                MulDiv(kMinWindowHeight, static_cast<int>(dpi), 96);
             return 0;
         }
 
@@ -719,16 +773,20 @@ ShowResult show_url(const std::wstring& url, const std::wstring& title) {
     // 小一圈，右侧被裁掉。
     HWND hwnd = CreateWindowExW(
         WS_EX_APPWINDOW, kWindowClass, title.c_str(), kWindowStyle,
-        CW_USEDEFAULT, CW_USEDEFAULT, 920, 620, nullptr, nullptr,
-        GetModuleHandleW(nullptr), nullptr);
+        CW_USEDEFAULT, CW_USEDEFAULT, kDefaultWindowWidth,
+        kDefaultWindowHeight, nullptr, nullptr, GetModuleHandleW(nullptr),
+        nullptr);
     if (hwnd == nullptr) {
         std::cerr << "CreateWindowExW 失败\n";
         if (own_com) CoUninitialize();
         return ShowResult::Unavailable;
     }
     const UINT dpi = GetDpiForWindow(hwnd);
-    SetWindowPos(hwnd, nullptr, 0, 0, 920 * dpi / 96, 620 * dpi / 96,
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    const RECT window_rect = DefaultWindowRect(hwnd, dpi);
+    SetWindowPos(hwnd, nullptr, window_rect.left, window_rect.top,
+                 window_rect.right - window_rect.left,
+                 window_rect.bottom - window_rect.top,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
     g_win.hwnd = hwnd;
 
     // 窗口没有系统标题栏，但 DWM 仍会画外边框和阴影；深色属性保证在

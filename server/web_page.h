@@ -270,7 +270,99 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 1.5rem var(--gutter) 1.25rem;
+    padding: 1.25rem var(--gutter) 1rem;
+  }
+
+  .col-main,
+  .col-side { min-width: 0; }
+
+  /* 单列（<1000px，方案 A 回退）：右栏卡片落到表单下方，整页滚动。 */
+  .col-side { margin-top: .75rem; }
+
+  /* ---- 宽屏（viewport >= 1000px）：方案 B 双栏工作台 ------------------- */
+  /* 左栏放主设置，右栏常驻任务/结果；两栏各自滚动，状态栏在 grid 之外
+     保持全宽固定（页面最底部那条不随栏滚动）。 */
+  @media (min-width: 1000px) {
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 21.5rem;
+      gap: 1.5rem;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .col-main {
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 1.25rem 0 1rem var(--gutter);
+    }
+
+    .col-side {
+      overflow-x: hidden;
+      overflow-y: auto;
+      margin-top: 0;
+      padding: 1.25rem var(--gutter) 1rem 1.25rem;
+      border-left: 1px solid var(--border);
+    }
+
+    .col-side .panel {
+      margin-top: 0;
+      margin-bottom: .7rem;
+    }
+
+    .col-side .panel:last-child { margin-bottom: 0; }
+
+    /* 右栏较窄：路径行按钮允许折行，绝不出现横向滚动。 */
+    .col-side .result-path-line { flex-wrap: wrap; }
+  }
+
+  /* ---- 右栏：当前任务进度 / 空状态 ------------------------------------ */
+
+  .side-progress {
+    height: 6px;
+    margin: .35rem 0 .45rem;
+    overflow: hidden;
+    background: #2B2B2B;
+    border-radius: 3px;
+  }
+
+  .side-progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--busy);
+    transition: width .2s ease;
+  }
+
+  .side-meta {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .side-percent {
+    flex: 0 0 auto;
+    font-family: var(--mono);
+    font-size: .8125rem;
+    color: var(--ink);
+  }
+
+  .side-message {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: .75rem;
+    color: var(--ink-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .side-empty-text {
+    margin: 0;
+    font-size: .75rem;
+    line-height: 1.6;
+    color: var(--ink-3);
   }
 
   .form { max-width: 44rem; }
@@ -788,6 +880,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   }
 
   .result-state.is-ok { color: #7EE787; background: rgba(46, 160, 67, .16); }
+  .result-state.is-run { color: #E3B341; background: rgba(204, 167, 0, .16); }
   .result-state.is-err { color: #FF7B72; background: rgba(248, 81, 73, .16); }
 
   .result-detail {
@@ -1290,7 +1383,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
 </nav>
 
 <form id="form" novalidate>
-  <main>
+  <main id="workspace">
+    <div class="col-main">
     <div class="form">
       <!-- 运行中把整个 fieldset 置 disabled，一次禁用所有字段控件；
            比逐个记「原来是否禁用」可靠，也天然覆盖以后新增的控件。 -->
@@ -1457,6 +1551,35 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
       </section>
 
       </fieldset>
+    </div>
+    </div>
+
+    <!-- 右栏：当前任务 / 结果 / 最近任务。宽屏常驻；窄屏落到表单下方。 -->
+    <aside class="col-side" id="side-column">
+      <section class="panel side-empty" id="side-empty">
+        <div class="panel-head">
+          <h2 class="panel-title">当前任务</h2>
+        </div>
+        <p class="hint side-empty-text">
+          还没有任务。开始备份或还原后，这里会实时显示进度和结果。
+        </p>
+      </section>
+
+      <section class="panel" id="current-panel" hidden aria-live="polite">
+        <div class="panel-head">
+          <h2 class="panel-title" id="current-title">当前任务</h2>
+          <span class="result-state" id="current-state">进行中</span>
+        </div>
+        <div class="side-progress">
+          <div class="side-progress-fill" id="current-bar"></div>
+        </div>
+        <p class="side-meta">
+          <span class="side-percent" id="current-percent">0%</span>
+          <span class="side-message" id="current-message">
+            已提交，等待开始…
+          </span>
+        </p>
+      </section>
 
       <section class="panel" id="result-panel" hidden aria-live="polite">
         <div class="panel-head">
@@ -1483,8 +1606,7 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
         </div>
         <ul class="task-list" id="task-list"></ul>
       </section>
-
-    </div>
+    </aside>
   </main>
 
   <div class="statusbar" id="statusbar">
@@ -2227,6 +2349,8 @@ const state = {
   archiveInfoTimer: 0,
   archiveInfoToken: 0,
   passwordRequired: false,
+  // —— 右栏面板：是否有可展示的结果（运行中让位给「当前任务」） ——
+  resultVisible: false,
 };
 
 // 当前状态下界面上的每个词都从这里取，避免同一个动作在标签、按钮和状态栏
@@ -2921,12 +3045,22 @@ function taskResultText(task) {
   return textOf(result.message) || textOf(result.detail);
 }
 
+/// 右栏三种状态互相排斥：运行中显示「当前任务」；有结果时显示结果卡；
+/// 两者都没有就看最近任务；全都没有显示空状态。
+function syncSidePanels() {
+  const busy = state.busy;
+  const hasResult = !busy && state.resultVisible;
+  const hasTasks = state.tasks.length > 0;
+  $("current-panel").hidden = !busy;
+  $("result-panel").hidden = !hasResult;
+  $("tasks-panel").hidden = !hasTasks;
+  $("side-empty").hidden = busy || hasResult || hasTasks;
+}
+
 function renderTasks() {
-  const panel = $("tasks-panel");
   const list = $("task-list");
   const items = state.tasks.slice(0, 8);
   list.textContent = "";
-  panel.hidden = items.length === 0;
 
   for (const task of items) {
     const item = document.createElement("li");
@@ -2973,6 +3107,7 @@ function renderTasks() {
     item.appendChild(msg);
     list.appendChild(item);
   }
+  syncSidePanels();
 }
 
 async function refreshTasks() {
@@ -3045,6 +3180,20 @@ function updateRunProgress(task) {
     text = "正在" + verb + "… " + percent + "%";
   }
   setStatus("busy", text);
+
+  // 右栏「当前任务」卡片同步（百分比 + 阶段说明 + 状态徽标）。
+  const badge = $("current-state");
+  if (task.state === "queued") {
+    badge.textContent = "排队中";
+    badge.className = "result-state";
+  } else {
+    badge.textContent = "进行中";
+    badge.className = "result-state is-run";
+  }
+  $("current-bar").style.width = percent + "%";
+  $("current-percent").textContent = percent + "%";
+  $("current-message").textContent = task.message ||
+    (task.state === "queued" ? "已提交，等待开始…" : "正在" + verb + "…");
 }
 
 function finishTask(task) {
@@ -3080,7 +3229,6 @@ function describeFailureLine(task, verb) {
 
 function showTaskResult(task, ok) {
   const verb = state.currentVerb || describe().verb;
-  const panel = $("result-panel");
   $("result-title").textContent = verb + (ok ? "完成" : "失败");
 
   const badge = $("result-state");
@@ -3107,7 +3255,9 @@ function showTaskResult(task, ok) {
   $("result-open-error").hidden = true;
   syncResultOpenFolder(ok);
 
-  panel.hidden = false;
+  // 结果卡在右栏显示，替换掉「当前任务」卡片。
+  state.resultVisible = true;
+  syncSidePanels();
 }
 
 // ---- 结果区「打开目标文件夹」 -------------------------------------------
@@ -3377,6 +3527,18 @@ function setBusy(busy) {
 
   $("run-progress").hidden = !busy;
   if (!busy) $("run-progress-fill").style.width = "0%";
+
+  if (busy) {
+    // 新任务开始：右栏切到「当前任务」卡片，旧结果先收起（结束后会被替换）。
+    state.resultVisible = false;
+    const badge = $("current-state");
+    badge.textContent = "进行中";
+    badge.className = "result-state is-run";
+    $("current-bar").style.width = "0%";
+    $("current-percent").textContent = "0%";
+    $("current-message").textContent = "已提交，等待开始…";
+  }
+  syncSidePanels();
 }
 
 /// 提交任务。新接口返回 {"task_id": "..."}；万一遇到还没迁移的同步接口，
@@ -3822,10 +3984,12 @@ $("tree-up").disabled = true;
 state.advancedOpen = false;
 state.filterMode = "simple";
 state.filterRules = [];
+state.resultVisible = false;
 
 fillCompressionOptions();
 fillEncryptionOptions();
 render();
+syncSidePanels();
 loadAlgorithms();
 refreshTasks();
 
