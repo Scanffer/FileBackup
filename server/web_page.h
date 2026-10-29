@@ -285,8 +285,10 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
   @media (min-width: 1000px) {
     main {
       display: grid;
+      /* 两栏之间不留 gap：间距改由各栏自己的 padding 提供，这样左栏滚动条
+         能贴着中间的分隔线，不会隔着一个 gap 悬在栏内。 */
       grid-template-columns: minmax(0, 1fr) 21.5rem;
-      gap: 1.5rem;
+      gap: 0;
       overflow: hidden;
       padding: 0;
     }
@@ -294,7 +296,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     .col-main {
       overflow-x: hidden;
       overflow-y: auto;
-      padding: 1.25rem 0 1rem var(--gutter);
+      /* 右 padding 补足原 gap 的宽度：内容位置不变，滚动条右移贴住分隔线。 */
+      padding: 1.25rem var(--gutter) 1rem var(--gutter);
     }
 
     .col-side {
@@ -467,6 +470,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     font-size: .75rem;
     color: var(--ink-3);
   }
+
+  .hint.is-err { color: var(--err); }
 
   /* 路径输入 + 「浏览…」。按钮只在 WebView2 宿主模式下显示 —— 浏览器
      回退模式拿不到真实绝对路径，弹原生选择框也没有意义。 */
@@ -1505,6 +1510,20 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
             </div>
           </div>
 
+          <!-- 只在「备份 + 打包 + 选了加密」时出现：加密端输错是永久损失，
+               双输入是唯一能拦住手滑的手段。还原端不显示（错密码会立即失败）。 -->
+          <div class="row" id="row-password-confirm" hidden>
+            <label class="lbl" for="password-confirm">确认密码</label>
+            <div class="control">
+              <div class="field-line">
+                <input type="password" id="password-confirm"
+                       autocomplete="new-password" spellcheck="false"
+                       placeholder="再次输入同一密码">
+              </div>
+              <p class="hint" id="password-confirm-hint"></p>
+            </div>
+          </div>
+
           <div class="row" id="row-metadata">
             <span class="lbl">元数据</span>
             <div class="control">
@@ -1822,6 +1841,7 @@ function syncEncryptionControls() {
     (state.mode === "restore" && state.kind === "archive")
   );
   $("password").disabled = !passwordEnabled;
+  $("password-confirm").disabled = !passwordEnabled;
   $("password-toggle").disabled = !passwordEnabled;
 
   let encryptHint;
@@ -2608,6 +2628,10 @@ function render(keepStatus) {
   $("row-compress").hidden = d.compressHidden;
   $("row-encrypt").hidden = d.encryptHidden;
   $("row-password").hidden = d.passwordHidden;
+  const confirmVisible = passwordConfirmVisible();
+  $("row-password-confirm").hidden = !confirmVisible;
+  // 确认框藏起来时清掉旧值，避免下次打开直接报「不一致」。
+  if (!confirmVisible) $("password-confirm").value = "";
   $("row-filter").hidden = d.filterHidden;
 
   // 目录树按钮：备份页源/目标都能选；还原页只有「还原到」是目录。
@@ -2644,7 +2668,8 @@ function render(keepStatus) {
   $("go").textContent = state.busy
     ? "正在" + (state.currentVerb || d.verb) + "…"
     : "开始" + d.verb;
-  $("go").disabled = state.busy;
+  // 两次密码不一致时「开始」保持禁用（同时刷新确认框的提示文字）。
+  syncPasswordConfirm();
 
   // 还原归档时，输入框里已有路径就顺手拉一次归档信息（debounce）。
   if (state.mode === "restore" && state.kind === "archive" &&
@@ -2657,10 +2682,93 @@ function render(keepStatus) {
   if (!keepStatus) setStatus("", d.note);
 }
 
+// 备份页与还原页共用同一批输入框，但语义相反（目录 vs 归档、创建密码 vs
+// 解密密码）。每个模式各存一套表单状态，切换时保存/恢复，这样两边可以各自
+// 准备自己的参数、互不干扰。密码只在本进程内存里，任务结束后清空。
+const formMemory = {
+  backup: {
+    src: "", dst: "", password: "", passwordConfirm: "", metadata: true,
+  },
+  restore: {
+    src: "", dst: "", password: "", passwordConfirm: "", metadata: true,
+  },
+};
+
+/// 把指定模式记住的值写回共享的输入框。
+function applyFormMemory(mode) {
+  const slot = formMemory[mode];
+  $("src").value = slot.src;
+  $("dst").value = slot.dst;
+  $("password").value = slot.password;
+  $("password-confirm").value = slot.passwordConfirm;
+  state.metadata = slot.metadata;
+  // 明文显示只属于上一次操作，切回来时一律恢复成隐藏。
+  for (const id of ["password", "password-confirm"]) $(id).type = "password";
+  $("password-toggle").textContent = "显示";
+  $("password-toggle").setAttribute("aria-pressed", "false");
+}
+
+/// 把当前 DOM 里的整套输入存回当前模式的槽位。
+function saveFormMemory() {
+  const slot = formMemory[state.mode];
+  slot.src = $("src").value;
+  slot.dst = $("dst").value;
+  slot.password = $("password").value;
+  slot.passwordConfirm = $("password-confirm").value;
+  slot.metadata = state.metadata;
+}
+
+/// 确认密码框只在「备份 + 打包 + 选了加密」时出现。
+/// 还原端不需要二次输入：密码错了会立即解密失败，重输即可。
+function passwordConfirmVisible() {
+  return state.mode === "backup" && state.pack && state.encryption !== "none";
+}
+
+/// 两次输入不一致（确认框不可见时一律视为一致）。
+function passwordMismatch() {
+  return passwordConfirmVisible() &&
+    $("password").value !== $("password-confirm").value;
+}
+
+/// 实时回显两次输入是否一致；不一致时禁用「开始」按钮。
+function syncPasswordConfirm() {
+  const hint = $("password-confirm-hint");
+  const mismatch = passwordMismatch();
+  hint.className = mismatch ? "hint is-err" : "hint";
+  hint.textContent = mismatch
+    ? "两次输入的密码不一致。"
+    : "再输入一次，用于发现手滑。";
+  $("go").disabled = state.busy || mismatch;
+}
+
+/// 任务结束后丢弃口令：清空两个密码框，同时清掉当前模式槽位里的副本，
+/// 避免下次切回来又把旧口令带出来。
+function clearPassword() {
+  for (const id of ["password", "password-confirm"]) {
+    const input = $(id);
+    input.value = "";
+    input.type = "password";
+  }
+  formMemory[state.mode].password = "";
+  formMemory[state.mode].passwordConfirm = "";
+  $("password-toggle").textContent = "显示";
+  $("password-toggle").setAttribute("aria-pressed", "false");
+  syncPasswordConfirm();
+}
+
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
     if (state.busy) return;
-    state.mode = tab.dataset.mode;
+    const nextMode = tab.dataset.mode;
+    if (state.mode !== nextMode) {
+      // 整套输入先存回当前模式的槽位，再恢复目标模式的槽位。
+      // 密码不在这里清：两个模式各有一份，不会互相串用。
+      saveFormMemory();
+      state.mode = nextMode;
+      applyFormMemory(nextMode);
+      // 路径换了，上一份归档信息（chip / 错误行）立即作废。
+      resetArchiveInfoState();
+    }
     render();
   });
 }
@@ -2707,12 +2815,19 @@ $("advanced-toggle").addEventListener("click", () => {
 
 // 密码显示/隐藏：把 input 的 type 在 password / text 之间切换。
 $("password-toggle").addEventListener("click", () => {
-  const input = $("password");
-  const show = input.type === "password";
-  input.type = show ? "text" : "password";
+  const show = $("password").type === "password";
+  // 两个密码框一起切换，避免只显示其中一个。
+  for (const id of ["password", "password-confirm"]) {
+    $(id).type = show ? "text" : "password";
+  }
   $("password-toggle").textContent = show ? "隐藏" : "显示";
   $("password-toggle").setAttribute("aria-pressed", String(show));
 });
+
+// 一边输入一边比对，输错立刻能看到提示。
+for (const id of ["password", "password-confirm"]) {
+  $(id).addEventListener("input", syncPasswordConfirm);
+}
 
 $("filter-mode-simple").addEventListener("click", () => {
   switchFilterMode("simple");
@@ -3202,6 +3317,8 @@ function finishTask(task) {
   state.currentTaskId = null;
   stopTaskStreams();
   setBusy(false);
+  // 任务结束即丢弃口令：输入框留白，避免下一次操作误用旧密码。
+  clearPassword();
 
   showTaskResult(task, ok);
   if (ok) {
@@ -3520,7 +3637,7 @@ function setBusy(busy) {
   for (const tab of document.querySelectorAll(".tab")) tab.disabled = busy;
 
   const go = $("go");
-  go.disabled = busy;
+  go.disabled = busy || passwordMismatch();
   go.textContent = busy
     ? "正在" + (state.currentVerb || describe().verb) + "…"
     : "开始" + describe().verb;
@@ -3615,6 +3732,12 @@ $("form").addEventListener("submit", async (e) => {
       setStatus("err", "已选择加密算法，请先填写密码。");
       openAdvancedForPassword();
       $("password").focus();
+      return;
+    }
+    if (passwordMismatch()) {
+      setStatus("err", "两次输入的密码不一致，请检查后重试。");
+      openAdvancedForPassword();
+      $("password-confirm").focus();
       return;
     }
     // 简单模式先检查有没有空值行；再统一按 JSON（提交源）校验一遍。

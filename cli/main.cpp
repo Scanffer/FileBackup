@@ -71,6 +71,63 @@ std::string wide_to_utf8(const std::wstring& w) {
 #endif
 }
 
+/// 从控制台读一行口令，不回显（--ask-password 用）。
+/// 返回 false 表示读不到：输入不是控制台、读失败，或用户按了 Ctrl+C。
+///
+/// 为了不退化成"Ctrl+C 之后控制台一直不回显"，这里连 PROCESSED_INPUT 和
+/// LINE_INPUT 一起关掉，自己逐字符收集：换行结束，退格删一个宽字符，
+/// Ctrl+C 视为取消，最后无论成败都恢复原始控制台模式。
+bool read_password_hidden(const wchar_t* label, std::wstring& out) {
+#ifdef _WIN32
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+    if (in == INVALID_HANDLE_VALUE || in == nullptr ||
+        !GetConsoleMode(in, &mode)) {
+        return false;
+    }
+    const DWORD saved = mode;
+    SetConsoleMode(in, mode & ~(static_cast<DWORD>(ENABLE_ECHO_INPUT) |
+                                static_cast<DWORD>(ENABLE_PROCESSED_INPUT) |
+                                static_cast<DWORD>(ENABLE_LINE_INPUT)));
+    std::wcout << label << std::flush;
+
+    std::wstring line;
+    bool ok = true;
+    while (true) {
+        wchar_t ch = 0;
+        DWORD read = 0;
+        if (!ReadConsoleW(in, &ch, 1, &read, nullptr) || read == 0) {
+            ok = false;
+            break;
+        }
+        if (ch == L'\r' || ch == L'\n') break;
+        if (ch == L'\x03') {  // Ctrl+C
+            ok = false;
+            break;
+        }
+        if (ch == L'\b') {  // 退格：删一个字符（宽字符，中文也是一个）
+            if (!line.empty()) {
+                line.pop_back();
+                std::wcout << L"\b \b" << std::flush;
+            }
+            continue;
+        }
+        line.push_back(ch);
+        std::wcout << L'*' << std::flush;
+    }
+
+    SetConsoleMode(in, saved);
+    std::wcout << L"\n" << std::flush;
+    if (!ok) return false;
+    out = line;
+    return true;
+#else
+    (void)label;
+    (void)out;
+    return false;
+#endif
+}
+
 std::optional<std::wstring> find_opt(int argc, wchar_t** argv, int start,
                                      const std::wstring& key) {
     for (int i = start; i < argc; ++i) {
@@ -173,8 +230,12 @@ void print_usage(std::ostream& os) {
           "  FileBackup-cli backup  --src ./docs --dst ./bak/docs.vbak \\\n"
           "                         --pack vbak --compress deflate --level 6 \\\n"
           "                         --encrypt aes256cbc --password 123456\n"
+          "  FileBackup-cli backup  --src ./docs --dst ./bak/docs.vbak \\\n"
+          "                         --pack vbak --encrypt aes256cbc --ask-password\n"
           "  FileBackup-cli restore --archive ./bak/docs.vbak --dst ./restored \\\n"
           "                         --password 123456\n"
+          "\n"
+          "  --ask-password 在控制台交互输入两次密码（不回显），与 --password 二选一。\n"
           "\n"
           "筛选示例（备份时）：\n"
           "  --filter '[{\"action\":\"include\",\"path\":\"docs/**\"},\n"
@@ -334,14 +395,45 @@ int main(int argc, char** argv) {
                     }
                     o.encryption = *id;
                 }
-                if (password) o.password = wide_to_utf8(*password);
-                if (o.encryption != backup::EncryptionId::None &&
-                    o.password.empty()) {
-                    std::cerr << "使用 --encrypt 时必须提供非空 --password。\n";
+                const bool ask_password =
+                    has_flag(argc, argv, 2, L"--ask-password");
+                if (ask_password && password) {
+                    std::cerr << "--ask-password 与 --password 只能用一个。\n";
                     return 1;
                 }
-                if (o.encryption == backup::EncryptionId::None && password) {
-                    std::cerr << "--password 只在 --encrypt 时生效。\n";
+                if (ask_password && !encrypt) {
+                    std::cerr << "--ask-password 只在 --encrypt 时使用。\n";
+                    return 1;
+                }
+                if (password) o.password = wide_to_utf8(*password);
+                if (ask_password) {
+                    std::wstring first;
+                    std::wstring again;
+                    if (!read_password_hidden(L"密码：", first) ||
+                        !read_password_hidden(L"确认密码：", again)) {
+                        std::cerr << "无法从控制台读取密码（或输入被取消）。\n";
+                        return 1;
+                    }
+                    if (first.empty()) {
+                        std::cerr << "密码不能为空。\n";
+                        return 1;
+                    }
+                    if (first != again) {
+                        std::cerr << "两次输入的密码不一致。\n";
+                        return 1;
+                    }
+                    o.password = wide_to_utf8(first);
+                }
+                if (o.encryption != backup::EncryptionId::None &&
+                    o.password.empty()) {
+                    std::cerr << "使用 --encrypt 时必须提供 --password 或 "
+                                 "--ask-password。\n";
+                    return 1;
+                }
+                if (o.encryption == backup::EncryptionId::None &&
+                    (password || ask_password)) {
+                    std::cerr << "--password / --ask-password 只在 --encrypt 时"
+                                 "生效。\n";
                     return 1;
                 }
                 if (filter_json || filter_file) {
@@ -413,6 +505,12 @@ int main(int argc, char** argv) {
         const auto dst = find_opt(argc, argv, 2, L"--dst");
         const auto password = find_opt(argc, argv, 2, L"--password");
         const bool no_metadata = has_flag(argc, argv, 2, L"--no-metadata");
+        const bool ask_password = has_flag(argc, argv, 2, L"--ask-password");
+        if (ask_password) {
+            std::cerr << "--ask-password 只用于 backup --encrypt；"
+                         "解包请用 --password。\n";
+            return 1;
+        }
 
         if (!dst || (!archive && !src)) {
             std::cerr
