@@ -27,25 +27,8 @@ target_include_directories(webview2_sdk INTERFACE
 )
 
 # ---------------------------------------------------------------------------
-# Zstandard —— 压缩算法（README 2.1 原计划的算法之一，作为附加能力保留；
-# 计分主力是自研的 DEFLATE / LZ4 / LZW / RLE）。
-#
-# 完整源码 vendored，用官方 CMake 构建静态库 libzstd_static。
-# 所有会生成程序/测试/共享库的开关都关掉，避免拖慢构建。
-# ---------------------------------------------------------------------------
-set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
-set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
-set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ZSTD_MULTITHREAD_SUPPORT OFF CACHE BOOL "" FORCE)
 
-add_subdirectory(
-    ${CMAKE_CURRENT_SOURCE_DIR}/zstd/build/cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/zstd_build
-    EXCLUDE_FROM_ALL
-)
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # nlohmann/json —— 单头文件 JSON（manifest、REST API、筛选规则）。

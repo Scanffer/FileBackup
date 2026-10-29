@@ -1,5 +1,3 @@
-#include "algorithm.h"
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -9,6 +7,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "algorithm.h"
 
 // ===========================================================================
 // 自研 DEFLATE 压缩 / 解压（RFC 1951，外加 RFC 1950 的 zlib 头）
@@ -42,19 +42,18 @@ constexpr int kHashBits = 15;
 constexpr int kHashSize = 1 << kHashBits;
 constexpr std::size_t kBlockInput = 128 * 1024;  // 每块最多 128KB 原始数据
 
-constexpr int kLengthBase[29] = {
-    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27,
-    31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
-constexpr int kLengthExtra[29] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
-    2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-constexpr int kDistBase[30] = {
-    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129,
-    193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097,
-    6145, 8193, 12289, 16385, 24577};
-constexpr int kDistExtra[30] = {
-    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6,
-    6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+constexpr int kLengthBase[29] = {3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
+                                 15, 17, 19, 23,  27,  31,  35,  43,  51, 59,
+                                 67, 83, 99, 115, 131, 163, 195, 227, 258};
+constexpr int kLengthExtra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
+                                  2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+constexpr int kDistBase[30] = {1,    2,    3,    4,     5,     7,    9,    13,
+                               17,   25,   33,   49,    65,    97,   129,  193,
+                               257,  385,  513,  769,   1025,  1537, 2049, 3073,
+                               4097, 6145, 8193, 12289, 16385, 24577};
+constexpr int kDistExtra[30] = {0, 0, 0,  0,  1,  1,  2,  2,  3,  3,
+                                4, 4, 5,  5,  6,  6,  7,  7,  8,  8,
+                                9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
 // ---------------------------------------------------------------------------
 // 位流读写
@@ -63,7 +62,7 @@ constexpr int kDistExtra[30] = {
 // ---------------------------------------------------------------------------
 
 class BitWriter {
-public:
+   public:
     void put_bits(std::uint32_t value, int count) {
         for (int i = 0; i < count; ++i) {
             bitbuf_ |= ((value >> i) & 1u) << bitcount_;
@@ -92,14 +91,14 @@ public:
         return std::move(out_);
     }
 
-private:
+   private:
     Bytes out_;
     std::uint32_t bitbuf_ = 0;
     int bitcount_ = 0;
 };
 
 class BitReader {
-public:
+   public:
     BitReader(const std::uint8_t* data, std::size_t size)
         : data_(data), size_(size) {}
 
@@ -108,8 +107,7 @@ public:
         if (bit_ + static_cast<std::size_t>(count) > size_ * 8) return false;
         value = 0;
         for (int i = 0; i < count; ++i) {
-            const std::uint32_t bit =
-                (data_[bit_ >> 3] >> (bit_ & 7)) & 1u;
+            const std::uint32_t bit = (data_[bit_ >> 3] >> (bit_ & 7)) & 1u;
             value |= bit << i;
             ++bit_;
         }
@@ -120,7 +118,7 @@ public:
 
     bool byte_aligned() const { return (bit_ & 7) == 0; }
 
-private:
+   private:
     const std::uint8_t* data_;
     std::size_t size_;
     std::size_t bit_ = 0;
@@ -131,7 +129,7 @@ private:
 // ---------------------------------------------------------------------------
 
 class HuffmanTree {
-public:
+   public:
     /// 用 code lengths 建树；返回 false 表示长度表不合法（超长/冲突）。
     bool build(const std::uint8_t* lengths, int count) {
         nodes_.assign(1, Node{-1, -1, -1});
@@ -194,7 +192,7 @@ public:
 
     bool empty() const { return empty_; }
 
-private:
+   private:
     struct Node {
         int child[2];
         int symbol;
@@ -262,7 +260,7 @@ std::uint32_t adler32(const Bytes& data) {
 // ---------------------------------------------------------------------------
 
 class DeflateCompressor final : public ICompressor {
-public:
+   public:
     CompressionId id() const override { return CompressionId::Deflate; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -312,8 +310,7 @@ public:
             std::int64_t candidate = head[h];
             insert(pos);
 
-            const std::size_t limit =
-                std::min<std::size_t>(kMaxMatch, n - pos);
+            const std::size_t limit = std::min<std::size_t>(kMaxMatch, n - pos);
             int best_len = kMinMatch - 1;
             int best_dist = 0;
             int chain = max_chain;
@@ -396,8 +393,7 @@ public:
             emit_fixed(256);        // 块结束
         } else {
             while (true) {
-                const std::size_t block_end =
-                    std::min(n, pos + kBlockInput);
+                const std::size_t block_end = std::min(n, pos + kBlockInput);
                 const bool is_last = block_end >= n;
 
                 writer.put_bits(is_last ? 1u : 0u, 1);
@@ -515,8 +511,7 @@ public:
             if (btype == 2) {
                 // ---- 动态 Huffman 块 ----
                 std::uint32_t hlit = 0, hdist = 0, hclen = 0;
-                if (!reader.read_bits(5, hlit) ||
-                    !reader.read_bits(5, hdist) ||
+                if (!reader.read_bits(5, hlit) || !reader.read_bits(5, hdist) ||
                     !reader.read_bits(4, hclen)) {
                     error = "动态 Huffman 块头损坏";
                     return {};
@@ -529,9 +524,9 @@ public:
                     return {};
                 }
 
-                static constexpr int kOrder[19] = {
-                    16, 17, 18, 0, 8, 7, 9, 6, 10, 5,
-                    11, 4, 12, 3, 13, 2, 14, 1, 15};
+                static constexpr int kOrder[19] = {16, 17, 18, 0,  8, 7,  9,
+                                                   6,  10, 5,  11, 4, 12, 3,
+                                                   13, 2,  14, 1,  15};
                 std::uint8_t cl_lengths[19] = {};
                 for (std::uint32_t i = 0; i < hclen; ++i) {
                     std::uint32_t v = 0;
@@ -656,8 +651,7 @@ public:
                     return {};
                 }
                 const std::size_t distance =
-                    static_cast<std::size_t>(kDistBase[dist_sym]) +
-                    dist_extra;
+                    static_cast<std::size_t>(kDistBase[dist_sym]) + dist_extra;
                 if (distance == 0 || distance > out.size()) {
                     error = "距离超出已解压数据范围";
                     return {};
@@ -714,7 +708,7 @@ public:
 // ===========================================================================
 
 class Lz4Compressor final : public ICompressor {
-public:
+   public:
     CompressionId id() const override { return CompressionId::Lz4; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -749,11 +743,12 @@ public:
         auto emit_sequence = [&](std::size_t literal_start,
                                  std::size_t literal_len, std::size_t offset,
                                  std::size_t match_len) {
-            const std::size_t lit_nibble = std::min<std::size_t>(literal_len, 15);
+            const std::size_t lit_nibble =
+                std::min<std::size_t>(literal_len, 15);
             const std::size_t match_nibble =
                 std::min<std::size_t>(match_len - kMinMatch, 15);
-            out.push_back(static_cast<std::uint8_t>((lit_nibble << 4) |
-                                                    match_nibble));
+            out.push_back(
+                static_cast<std::uint8_t>((lit_nibble << 4) | match_nibble));
             if (literal_len >= 15) {
                 std::size_t rest = literal_len - 15;
                 while (rest >= 255) {
@@ -762,8 +757,8 @@ public:
                 }
                 out.push_back(static_cast<std::uint8_t>(rest));
             }
-            const auto lit_begin = input.begin() +
-                                   static_cast<std::ptrdiff_t>(literal_start);
+            const auto lit_begin =
+                input.begin() + static_cast<std::ptrdiff_t>(literal_start);
             out.insert(out.end(), lit_begin,
                        lit_begin + static_cast<std::ptrdiff_t>(literal_len));
             out.push_back(static_cast<std::uint8_t>(offset & 0xFF));
@@ -807,7 +802,8 @@ public:
         // 最后字面量序列（只含字面量，token 低 4 位为 0）。
         {
             const std::size_t literal_len = n - anchor;
-            const std::size_t lit_nibble = std::min<std::size_t>(literal_len, 15);
+            const std::size_t lit_nibble =
+                std::min<std::size_t>(literal_len, 15);
             out.push_back(static_cast<std::uint8_t>(lit_nibble << 4));
             if (literal_len >= 15) {
                 std::size_t rest = literal_len - 15;
@@ -858,10 +854,9 @@ public:
                 error = "LZ4 解压后大小与预期不符";
                 return {};
             }
-            out.insert(out.end(),
-                       input.begin() + static_cast<std::ptrdiff_t>(ip),
-                       input.begin() +
-                           static_cast<std::ptrdiff_t>(ip + literal_len));
+            out.insert(
+                out.end(), input.begin() + static_cast<std::ptrdiff_t>(ip),
+                input.begin() + static_cast<std::ptrdiff_t>(ip + literal_len));
             ip += literal_len;
 
             // 字面量后流就结束了：这是一个合法的“最后字面量序列”。
@@ -871,9 +866,9 @@ public:
                 error = "LZ4 匹配序列缺少 2 字节 offset";
                 return {};
             }
-            const std::size_t offset = static_cast<std::size_t>(input[ip]) |
-                                       (static_cast<std::size_t>(input[ip + 1])
-                                        << 8);
+            const std::size_t offset =
+                static_cast<std::size_t>(input[ip]) |
+                (static_cast<std::size_t>(input[ip + 1]) << 8);
             ip += 2;
             if (offset == 0 || offset > out.size()) {
                 error = "LZ4 offset 越界";
@@ -924,7 +919,7 @@ public:
 // ===========================================================================
 
 class RleCompressor final : public ICompressor {
-public:
+   public:
     CompressionId id() const override { return CompressionId::Rle; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -998,10 +993,9 @@ public:
                     error = "RLE 解压后大小与预期不符";
                     return {};
                 }
-                out.insert(out.end(),
-                           input.begin() + static_cast<std::ptrdiff_t>(ip),
-                           input.begin() +
-                               static_cast<std::ptrdiff_t>(ip + count));
+                out.insert(
+                    out.end(), input.begin() + static_cast<std::ptrdiff_t>(ip),
+                    input.begin() + static_cast<std::ptrdiff_t>(ip + count));
                 ip += count;
             } else {
                 const std::size_t count =
@@ -1056,7 +1050,7 @@ int lzw_width(std::size_t emitted_since_clear) {
 }
 
 class LzwCompressor final : public ICompressor {
-public:
+   public:
     CompressionId id() const override { return CompressionId::Lzw; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -1090,8 +1084,7 @@ public:
         std::uint16_t w = input[0];
         for (std::size_t i = 1; i < input.size(); ++i) {
             const std::uint8_t c = input[i];
-            const std::uint32_t key =
-                (static_cast<std::uint32_t>(w) << 8) | c;
+            const std::uint32_t key = (static_cast<std::uint32_t>(w) << 8) | c;
             const auto found = dict.find(key);
             if (found != dict.end()) {
                 w = found->second;
@@ -1193,8 +1186,7 @@ public:
             out.insert(out.end(), entry.begin(), entry.end());
 
             if (prev >= 0 && next_code < (std::size_t{1} << kLzwMaxBits)) {
-                std::string new_entry =
-                    dict[static_cast<std::size_t>(prev)];
+                std::string new_entry = dict[static_cast<std::size_t>(prev)];
                 new_entry.push_back(static_cast<char>(entry[0]));
                 dict.push_back(std::move(new_entry));
                 ++next_code;
@@ -1218,12 +1210,18 @@ public:
 
 const char* to_string(CompressionId id) {
     switch (id) {
-        case CompressionId::None: return "none";
-        case CompressionId::Deflate: return "deflate";
-        case CompressionId::Lz4: return "lz4";
-        case CompressionId::Zstd: return "zstd";
-        case CompressionId::Rle: return "rle";
-        case CompressionId::Lzw: return "lzw";
+        case CompressionId::None:
+            return "none";
+        case CompressionId::Deflate:
+            return "deflate";
+        case CompressionId::Lz4:
+            return "lz4";
+        case CompressionId::Zstd:
+            return "zstd";
+        case CompressionId::Rle:
+            return "rle";
+        case CompressionId::Lzw:
+            return "lzw";
     }
     return "none";
 }
@@ -1253,9 +1251,12 @@ const std::vector<AlgorithmInfo>& compression_algorithms() {
 
 int clamp_compression_level(CompressionId id, int level) {
     switch (id) {
-        case CompressionId::Zstd: return std::clamp(level, 1, 19);
-        case CompressionId::Deflate: return std::clamp(level, 1, 9);
-        default: return level;
+        case CompressionId::Zstd:
+            return std::clamp(level, 1, 19);
+        case CompressionId::Deflate:
+            return std::clamp(level, 1, 9);
+        default:
+            return level;
     }
 }
 

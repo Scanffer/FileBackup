@@ -5,10 +5,10 @@
 // 接口；仅 random_bytes 使用 BCryptGenRandom 作为系统随机源）。
 //
 //   本文件包含：
-//     SHA-256 / HMAC-SHA256 / PBKDF2-HMAC-SHA256       (FIPS 180-4 / RFC 2104 / RFC 8018)
-//     AES-256 + CBC + PKCS#7                          (FIPS 197 / NIST SP 800-38A)
-//     ChaCha20-Poly1305                               (RFC 8439)
-//     RC4                                             (教学用流密码)
+//     SHA-256 / HMAC-SHA256 / PBKDF2-HMAC-SHA256       (FIPS 180-4 / RFC 2104 /
+//     RFC 8018) AES-256 + CBC + PKCS#7                          (FIPS 197 /
+//     NIST SP 800-38A) ChaCha20-Poly1305                               (RFC
+//     8439) RC4                                             (教学用流密码)
 //   Base64 / hex / CRC32 / 加密算法注册表等工具函数。
 //
 // 设计要点（与 VBAK v3 归档格式的约定一致）：
@@ -25,6 +25,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+// 顺序不能反：bcrypt.h 依赖 windows.h 先带入 ULONG / NTSTATUS / NCRYPT_KEY_HANDLE
+// 等基础类型，反过来会报 “'NTSTATUS' does not name a type”。
 #include <windows.h>
 #include <bcrypt.h>
 
@@ -57,15 +59,15 @@ std::array<std::uint32_t, 256> make_crc32_table() {
     }
     return table;
 }
-
-std::uint32_t rotl32(std::uint32_t x, unsigned n) {
+// 循环左移位
+std::uint32_t rotl32(std::uint32_t x, unsigned n) { 
     return (x << n) | (x >> (32 - n));
 }
-
+// 循环右移位
 std::uint32_t rotr32(std::uint32_t x, unsigned n) {
     return (x >> n) | (x << (32 - n));
 }
-
+//大端
 std::uint32_t load_be32(const std::uint8_t* p) {
     return (static_cast<std::uint32_t>(p[0]) << 24) |
            (static_cast<std::uint32_t>(p[1]) << 16) |
@@ -86,7 +88,7 @@ void store_be64(std::uint8_t* p, std::uint64_t v) {
         v >>= 8;
     }
 }
-
+//小端
 std::uint32_t load_le32(const std::uint8_t* p) {
     return static_cast<std::uint32_t>(p[0]) |
            (static_cast<std::uint32_t>(p[1]) << 8) |
@@ -130,7 +132,7 @@ constexpr std::size_t kSha256BlockSize = 64;
 constexpr std::size_t kSha256DigestSize = 32;
 
 class Sha256 {
-public:
+   public:
     Sha256() { reset(); }
 
     void reset() {
@@ -178,7 +180,7 @@ public:
         return digest;
     }
 
-private:
+   private:
     void compress(const std::uint8_t* block) {
         static constexpr std::uint32_t kRound[64] = {
             0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu,
@@ -205,8 +207,10 @@ private:
             w[i] = w[i - 16] + s0 + w[i - 7] + s1;
         }
 
-        std::uint32_t a = state_[0], b = state_[1], c = state_[2], d = state_[3];
-        std::uint32_t e = state_[4], f = state_[5], g = state_[6], h = state_[7];
+        std::uint32_t a = state_[0], b = state_[1], c = state_[2],
+                      d = state_[3];
+        std::uint32_t e = state_[4], f = state_[5], g = state_[6],
+                      h = state_[7];
         for (std::size_t i = 0; i < 64; ++i) {
             const std::uint32_t s1 =
                 rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
@@ -297,8 +301,8 @@ Bytes hmac_sha256_bytes(const Bytes& key, const Bytes& data) {
 // ===========================================================================
 
 Bytes pbkdf2_hmac_sha256_bytes(const std::uint8_t* password,
-                              std::size_t password_size, const Bytes& salt,
-                              std::uint32_t iterations, std::size_t key_size) {
+                               std::size_t password_size, const Bytes& salt,
+                               std::uint32_t iterations, std::size_t key_size) {
     const std::size_t block_count =
         (key_size + kSha256DigestSize - 1) / kSha256DigestSize;
     Bytes derived;
@@ -435,8 +439,7 @@ void aes256_expand_key(const std::uint8_t key[32], Aes256Key& expanded) {
             for (std::uint8_t& byte : temp) byte = tables.sbox[byte];
         }
         for (std::size_t j = 0; j < 4; ++j) {
-            words[i][j] =
-                static_cast<std::uint8_t>(words[i - 8][j] ^ temp[j]);
+            words[i][j] = static_cast<std::uint8_t>(words[i - 8][j] ^ temp[j]);
         }
     }
 
@@ -472,8 +475,7 @@ void aes_shift_rows(std::uint8_t state[16]) {
     std::uint8_t shifted[16];
     for (std::size_t row = 0; row < 4; ++row) {
         for (std::size_t column = 0; column < 4; ++column) {
-            shifted[4 * column + row] =
-                state[4 * ((column + row) & 3u) + row];
+            shifted[4 * column + row] = state[4 * ((column + row) & 3u) + row];
         }
     }
     std::memcpy(state, shifted, kAesBlockSize);
@@ -516,18 +518,18 @@ void aes_inv_mix_columns(std::uint8_t state[16]) {
         const std::uint8_t a1 = state[4 * column + 1];
         const std::uint8_t a2 = state[4 * column + 2];
         const std::uint8_t a3 = state[4 * column + 3];
-        state[4 * column + 0] = static_cast<std::uint8_t>(
-            tables.mul14[a0] ^ tables.mul11[a1] ^ tables.mul13[a2] ^
-            tables.mul9[a3]);
-        state[4 * column + 1] = static_cast<std::uint8_t>(
-            tables.mul9[a0] ^ tables.mul14[a1] ^ tables.mul11[a2] ^
-            tables.mul13[a3]);
-        state[4 * column + 2] = static_cast<std::uint8_t>(
-            tables.mul13[a0] ^ tables.mul9[a1] ^ tables.mul14[a2] ^
-            tables.mul11[a3]);
-        state[4 * column + 3] = static_cast<std::uint8_t>(
-            tables.mul11[a0] ^ tables.mul13[a1] ^ tables.mul9[a2] ^
-            tables.mul14[a3]);
+        state[4 * column + 0] =
+            static_cast<std::uint8_t>(tables.mul14[a0] ^ tables.mul11[a1] ^
+                                      tables.mul13[a2] ^ tables.mul9[a3]);
+        state[4 * column + 1] =
+            static_cast<std::uint8_t>(tables.mul9[a0] ^ tables.mul14[a1] ^
+                                      tables.mul11[a2] ^ tables.mul13[a3]);
+        state[4 * column + 2] =
+            static_cast<std::uint8_t>(tables.mul13[a0] ^ tables.mul9[a1] ^
+                                      tables.mul14[a2] ^ tables.mul11[a3]);
+        state[4 * column + 3] =
+            static_cast<std::uint8_t>(tables.mul11[a0] ^ tables.mul13[a1] ^
+                                      tables.mul9[a2] ^ tables.mul14[a3]);
     }
 }
 
@@ -588,14 +590,12 @@ Bytes aes256_cbc_encrypt_pkcs7(const Bytes& key, const Bytes& iv,
         std::uint8_t block[kAesBlockSize];
         for (std::size_t i = 0; i < kAesBlockSize; ++i) {
             const std::size_t position = offset + i;
-            const std::uint8_t value =
-                position < plaintext.size()
-                    ? plaintext[position]
-                    : static_cast<std::uint8_t>(padding);
+            const std::uint8_t value = position < plaintext.size()
+                                           ? plaintext[position]
+                                           : static_cast<std::uint8_t>(padding);
             block[i] = static_cast<std::uint8_t>(value ^ previous[i]);
         }
-        aes256_encrypt_block(expanded, block,
-                             ciphertext.data() + offset);
+        aes256_encrypt_block(expanded, block, ciphertext.data() + offset);
         std::memcpy(previous, ciphertext.data() + offset, kAesBlockSize);
         secure_wipe(block, sizeof(block));
     }
@@ -695,10 +695,8 @@ void chacha20_block(const std::uint8_t key[32], std::uint32_t counter,
     std::memcpy(working, state, sizeof(state));
     for (int round = 0; round < 10; ++round) {
         // 列混合
-        chacha20_quarter_round(working[0], working[4], working[8],
-                               working[12]);
-        chacha20_quarter_round(working[1], working[5], working[9],
-                               working[13]);
+        chacha20_quarter_round(working[0], working[4], working[8], working[12]);
+        chacha20_quarter_round(working[1], working[5], working[9], working[13]);
         chacha20_quarter_round(working[2], working[6], working[10],
                                working[14]);
         chacha20_quarter_round(working[3], working[7], working[11],
@@ -708,10 +706,8 @@ void chacha20_block(const std::uint8_t key[32], std::uint32_t counter,
                                working[15]);
         chacha20_quarter_round(working[1], working[6], working[11],
                                working[12]);
-        chacha20_quarter_round(working[2], working[7], working[8],
-                               working[13]);
-        chacha20_quarter_round(working[3], working[4], working[9],
-                               working[14]);
+        chacha20_quarter_round(working[2], working[7], working[8], working[13]);
+        chacha20_quarter_round(working[3], working[4], working[9], working[14]);
     }
     for (std::size_t i = 0; i < 16; ++i) {
         store_le32(output + i * 4, working[i] + state[i]);
@@ -729,8 +725,8 @@ void chacha20_xor(const std::uint8_t key[32], std::uint32_t counter_start,
         const std::size_t take =
             std::min<std::size_t>(sizeof(keystream), size - offset);
         for (std::size_t i = 0; i < take; ++i) {
-            output[offset + i] = static_cast<std::uint8_t>(input[offset + i] ^
-                                                           keystream[i]);
+            output[offset + i] =
+                static_cast<std::uint8_t>(input[offset + i] ^ keystream[i]);
         }
     }
     secure_wipe(keystream, sizeof(keystream));
@@ -738,7 +734,7 @@ void chacha20_xor(const std::uint8_t key[32], std::uint32_t counter_start,
 
 /// Poly1305 一次性认证器（RFC 8439 §2.5，26-bit limb 实现）。
 class Poly1305 {
-public:
+   public:
     explicit Poly1305(const std::uint8_t key[32]) {
         // r 按 RFC 要求 clamp（0x0ffffffc0ffffffc0ffffffc0fffffff）。
         r_[0] = load_le32(key + 0) & 0x3ffffffu;
@@ -794,7 +790,7 @@ public:
         }
 
         std::uint32_t h0 = h_[0], h1 = h_[1], h2 = h_[2], h3 = h_[3],
-                       h4 = h_[4];
+                      h4 = h_[4];
         std::uint32_t carry = 0;
         carry = h1 >> 26;
         h1 &= 0x3ffffffu;
@@ -846,34 +842,30 @@ public:
         const std::uint32_t word2 = (h2 >> 12) | (h3 << 14);
         const std::uint32_t word3 = (h3 >> 18) | (h4 << 8);
 
-        std::uint64_t sum = static_cast<std::uint64_t>(word0) +
-                            load_le32(s_ + 0);
+        std::uint64_t sum =
+            static_cast<std::uint64_t>(word0) + load_le32(s_ + 0);
         store_le32(tag + 0, static_cast<std::uint32_t>(sum));
-        sum = static_cast<std::uint64_t>(word1) + load_le32(s_ + 4) +
-              (sum >> 32);
+        sum =
+            static_cast<std::uint64_t>(word1) + load_le32(s_ + 4) + (sum >> 32);
         store_le32(tag + 4, static_cast<std::uint32_t>(sum));
-        sum = static_cast<std::uint64_t>(word2) + load_le32(s_ + 8) +
-              (sum >> 32);
+        sum =
+            static_cast<std::uint64_t>(word2) + load_le32(s_ + 8) + (sum >> 32);
         store_le32(tag + 8, static_cast<std::uint32_t>(sum));
         sum = static_cast<std::uint64_t>(word3) + load_le32(s_ + 12) +
               (sum >> 32);
         store_le32(tag + 12, static_cast<std::uint32_t>(sum));
     }
 
-private:
+   private:
     void process_block(const std::uint8_t* block, std::uint32_t hibit) {
         const std::uint32_t r0 = r_[0], r1 = r_[1], r2 = r_[2], r3 = r_[3],
                             r4 = r_[4];
-        const std::uint32_t s1 = r1 * 5, s2 = r2 * 5, s3 = r3 * 5,
-                            s4 = r4 * 5;
+        const std::uint32_t s1 = r1 * 5, s2 = r2 * 5, s3 = r3 * 5, s4 = r4 * 5;
 
         std::uint32_t h0 = h_[0] + (load_le32(block + 0) & 0x3ffffffu);
-        std::uint32_t h1 =
-            h_[1] + ((load_le32(block + 3) >> 2) & 0x3ffffffu);
-        std::uint32_t h2 =
-            h_[2] + ((load_le32(block + 6) >> 4) & 0x3ffffffu);
-        std::uint32_t h3 =
-            h_[3] + ((load_le32(block + 9) >> 6) & 0x3ffffffu);
+        std::uint32_t h1 = h_[1] + ((load_le32(block + 3) >> 2) & 0x3ffffffu);
+        std::uint32_t h2 = h_[2] + ((load_le32(block + 6) >> 4) & 0x3ffffffu);
+        std::uint32_t h3 = h_[3] + ((load_le32(block + 9) >> 6) & 0x3ffffffu);
         std::uint32_t h4 = h_[4] + ((load_le32(block + 12) >> 8) | hibit);
 
         std::uint64_t d0 = static_cast<std::uint64_t>(h0) * r0 +
@@ -936,7 +928,8 @@ private:
 };
 
 /// RFC 8439 §2.8 的 AEAD 构造：密文 = ChaCha20(counter=1) 异或，
-/// 标签 = Poly1305(one-time key, aad || pad || ct || pad || len(aad) || len(ct))。
+/// 标签 = Poly1305(one-time key, aad || pad || ct || pad || len(aad) ||
+/// len(ct))。
 Bytes chacha20_poly1305_encrypt_bytes(const std::uint8_t key[32],
                                       const std::uint8_t nonce[12],
                                       const std::uint8_t* aad,
@@ -1029,8 +1022,7 @@ Bytes rc4_bytes(const Bytes& key, const Bytes& data) {
         i = static_cast<std::uint8_t>(i + 1);
         j = static_cast<std::uint8_t>(j + s[i]);
         std::swap(s[i], s[j]);
-        const std::uint8_t key_byte =
-            s[static_cast<std::uint8_t>(s[i] + s[j])];
+        const std::uint8_t key_byte = s[static_cast<std::uint8_t>(s[i] + s[j])];
         output[n] = static_cast<std::uint8_t>(data[n] ^ key_byte);
     }
     return output;
@@ -1123,9 +1115,9 @@ Bytes chacha20_poly1305_encrypt(const Bytes& key, const Bytes& nonce,
         error = "ChaCha20-Poly1305 需要 12 字节 nonce";
         return {};
     }
-    return chacha20_poly1305_encrypt_bytes(
-        key.data(), nonce.data(), aad.data(), aad.size(), plaintext.data(),
-        plaintext.size());
+    return chacha20_poly1305_encrypt_bytes(key.data(), nonce.data(), aad.data(),
+                                           aad.size(), plaintext.data(),
+                                           plaintext.size());
 }
 
 }  // namespace crypto_detail
@@ -1136,10 +1128,14 @@ Bytes chacha20_poly1305_encrypt(const Bytes& key, const Bytes& nonce,
 
 const char* to_string(EncryptionId id) {
     switch (id) {
-        case EncryptionId::None: return "none";
-        case EncryptionId::Aes256Cbc: return "aes256cbc";
-        case EncryptionId::ChaCha20Poly1305: return "chacha20poly1305";
-        case EncryptionId::Rc4: return "rc4";
+        case EncryptionId::None:
+            return "none";
+        case EncryptionId::Aes256Cbc:
+            return "aes256cbc";
+        case EncryptionId::ChaCha20Poly1305:
+            return "chacha20poly1305";
+        case EncryptionId::Rc4:
+            return "rc4";
     }
     return "none";
 }
@@ -1178,7 +1174,7 @@ constexpr std::size_t kRc4IvSize = 16;
 constexpr std::size_t kPoly1305TagSize = 16;
 
 class Aes256CbcCipher final : public ICipher {
-public:
+   public:
     EncryptionId id() const override { return EncryptionId::Aes256Cbc; }
     std::size_t key_size() const override { return kAes256KeySize; }
     std::size_t iv_size() const override { return kAesBlockSize; }
@@ -1213,7 +1209,7 @@ public:
 };
 
 class ChaCha20Poly1305Cipher final : public ICipher {
-public:
+   public:
     EncryptionId id() const override { return EncryptionId::ChaCha20Poly1305; }
     std::size_t key_size() const override { return kChaCha20KeySize; }
     std::size_t iv_size() const override { return kChaCha20NonceSize; }
@@ -1230,9 +1226,9 @@ public:
             return {};
         }
         // ICipher 没有 AAD 入口，生产路径使用空 AAD。
-        return chacha20_poly1305_encrypt_bytes(
-            key.data(), iv.data(), nullptr, 0, plaintext.data(),
-            plaintext.size());
+        return chacha20_poly1305_encrypt_bytes(key.data(), iv.data(), nullptr,
+                                               0, plaintext.data(),
+                                               plaintext.size());
     }
 
     Bytes decrypt(const Bytes& ciphertext, const Bytes& key, const Bytes& iv,
@@ -1251,9 +1247,9 @@ public:
             return {};
         }
         Bytes plaintext;
-        if (!chacha20_poly1305_decrypt_bytes(
-                key.data(), iv.data(), nullptr, 0, ciphertext.data(),
-                ciphertext.size(), plaintext)) {
+        if (!chacha20_poly1305_decrypt_bytes(key.data(), iv.data(), nullptr, 0,
+                                             ciphertext.data(),
+                                             ciphertext.size(), plaintext)) {
             error = "ChaCha20-Poly1305 认证失败：密钥错误或数据被篡改";
             return {};
         }
@@ -1262,7 +1258,7 @@ public:
 };
 
 class Rc4Cipher final : public ICipher {
-public:
+   public:
     EncryptionId id() const override { return EncryptionId::Rc4; }
     std::size_t key_size() const override { return kRc4KeySize; }
     std::size_t iv_size() const override { return kRc4IvSize; }
@@ -1283,7 +1279,7 @@ public:
         return rc4_bytes(rc4_seed_key(key, iv), ciphertext);
     }
 
-private:
+   private:
     static bool check_sizes(const Bytes& key, const Bytes& iv,
                             std::string& error) {
         if (key.size() != kRc4KeySize) {
@@ -1302,12 +1298,14 @@ private:
 
 std::unique_ptr<ICipher> make_cipher(EncryptionId id) {
     switch (id) {
-        case EncryptionId::None: return nullptr;
+        case EncryptionId::None:
+            return nullptr;
         case EncryptionId::Aes256Cbc:
             return std::make_unique<Aes256CbcCipher>();
         case EncryptionId::ChaCha20Poly1305:
             return std::make_unique<ChaCha20Poly1305Cipher>();
-        case EncryptionId::Rc4: return std::make_unique<Rc4Cipher>();
+        case EncryptionId::Rc4:
+            return std::make_unique<Rc4Cipher>();
     }
     return nullptr;
 }
@@ -1372,9 +1370,10 @@ std::string base64_encode(const Bytes& data) {
     out.reserve(((data.size() + 2) / 3) * 4);
     std::size_t i = 0;
     for (; i + 3 <= data.size(); i += 3) {
-        const std::uint32_t group = (static_cast<std::uint32_t>(data[i]) << 16) |
-                                    (static_cast<std::uint32_t>(data[i + 1]) << 8) |
-                                    static_cast<std::uint32_t>(data[i + 2]);
+        const std::uint32_t group =
+            (static_cast<std::uint32_t>(data[i]) << 16) |
+            (static_cast<std::uint32_t>(data[i + 1]) << 8) |
+            static_cast<std::uint32_t>(data[i + 2]);
         out.push_back(kBase64Alphabet[(group >> 18) & 0x3Fu]);
         out.push_back(kBase64Alphabet[(group >> 12) & 0x3Fu]);
         out.push_back(kBase64Alphabet[(group >> 6) & 0x3Fu]);
@@ -1382,8 +1381,7 @@ std::string base64_encode(const Bytes& data) {
     }
     const std::size_t remaining = data.size() - i;
     if (remaining == 1) {
-        const std::uint32_t group =
-            static_cast<std::uint32_t>(data[i]) << 16;
+        const std::uint32_t group = static_cast<std::uint32_t>(data[i]) << 16;
         out.push_back(kBase64Alphabet[(group >> 18) & 0x3Fu]);
         out.push_back(kBase64Alphabet[(group >> 12) & 0x3Fu]);
         out.push_back('=');

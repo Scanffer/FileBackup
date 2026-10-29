@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# zstd 等第三方 C 库用 C11 就够。
+# vendored 的第三方 C 库（如果有）用 C11 就够。
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -47,9 +47,9 @@ endif()
 #   分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
 #   可被 cli 与 server 共同链接。
 #
-#   顺序注意：third_party 要先于 core —— core 链接 zstd/json 的 target。
+#   顺序注意：third_party 要先于 core —— core 链接 json 的 target。
 # ---------------------------------------------------------------------------
-add_subdirectory(third_party)  # httplib / WebView2 / zstd / json / Catch2
+add_subdirectory(third_party)  # httplib / WebView2 / json / Catch2
 add_subdirectory(core)         # backup_core 静态库：备份引擎
 add_subdirectory(server)       # backup_server 静态库：Web GUI 的 HTTP 层（无 main）
 add_subdirectory(cli)          # FileBackup-cli.exe：命令行入口

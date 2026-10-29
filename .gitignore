@@ -1,6 +1,9 @@
 # ---- 构建产物（CMakePresets.json 的 binaryDir） ----
-build/
-out/
+# 只忽略**仓库根目录**的 build/、out/：不带前导斜杠的 `build/` 会匹配任意
+# 层级的同名目录，曾把 third_party/zstd/build（上游 CMake 脚本）漏出仓库，
+# 造成「本机能编、clone 下来 configure 必失败」。见 third_party/CMakeLists.txt。
+/build/
+/out/
 cmake-build-*/
 
 # ---- 编译/链接中间产物 ----
@@ -60,3 +63,5 @@ backup-*/
 /test_mirror*/
 /test_unpack*/
 *.vbak
+
+/md

@@ -2,7 +2,6 @@
 #
 # 分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
 # 可被 cli 与 server 共同链接。
-
 add_library(backup_core STATIC
     version.cpp
     fs_utils.cpp
@@ -29,7 +28,6 @@ target_compile_definitions(backup_core
 #   链接 backup_core 的 cli/server/tests 也必须能找到这个头。
 target_link_libraries(backup_core
     PUBLIC fb_json
-    PRIVATE libzstd_static
 )
 
 if(WIN32)
