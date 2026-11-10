@@ -117,7 +117,8 @@ bool read_password_hidden(const wchar_t* label, std::wstring& out) {
     }
 
     SetConsoleMode(in, saved);
-    std::wcout << L"\n" << std::flush;
+    std::wcout << L"\n"
+               << std::flush;
     if (!ok) return false;
     out = line;
     return true;
@@ -456,6 +457,11 @@ int main(int argc, char** argv) {
                 if (!o.filter.empty()) std::cout << "，已应用筛选";
                 std::cout << "）：" << r.entries_written << " 个文件，"
                           << r.bytes_written << " 字节。\n";
+                // 目标被规范化过（补 .vbak / 落到目录里）时，把真实路径打出来，
+                // 否则按用户输入去找文件会找不到。
+                if (!r.archive.empty() && r.archive != o.archive) {
+                    std::cout << "归档文件：" << r.archive.u8string() << "\n";
+                }
             } else {
                 if (compress || level || encrypt || password) {
                     std::cerr << "--compress / --level / --encrypt / "

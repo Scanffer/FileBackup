@@ -347,3 +347,58 @@ TEST_CASE("pack/unpack encrypted archives (AES/ChaCha/RC4)", "[pack][crypto]") {
     fs::remove_all(base, ec);
 }
 
+// 目标路径的三种「手输」写法：填目录、带尾随分隔符、漏扩展名。
+// 三种都必须落成一个真实的 .vbak 文件，并把真实路径回报给调用方。
+TEST_CASE("pack normalizes the archive target path", "[pack][path]") {
+    const fs::path base = fresh_temp_dir();
+    const fs::path src = base / "src" / "myproject";
+    write_text(src / "a.txt", "hello");
+
+    const auto pack_to = [&](const fs::path& target) {
+        backup::PackOptions options;
+        options.src = src;
+        options.archive = target;
+        return backup::pack_directory(options);
+    };
+
+    SECTION("target is an existing directory") {
+        const fs::path dir = base / "out";
+        fs::create_directories(dir);
+        const backup::PackResult result = pack_to(dir);
+        REQUIRE(result.archive == dir / "myproject.vbak");
+        REQUIRE(fs::is_regular_file(result.archive));
+    }
+
+    SECTION("target ends with a separator") {
+        const fs::path dir = base / "out2";
+        fs::create_directories(dir);
+        // 用字符串拼出尾随分隔符，模拟用户在输入框里手写的样子。
+        const backup::PackResult result =
+            pack_to(fs::path(dir.u8string() + "/"));
+        REQUIRE(result.archive == dir / "myproject.vbak");
+        REQUIRE(fs::is_regular_file(result.archive));
+    }
+
+    SECTION("target has no extension") {
+        const fs::path target = base / "test";
+        const backup::PackResult result = pack_to(target);
+        REQUIRE(result.archive == fs::path(target.u8string() + ".vbak"));
+        REQUIRE(fs::is_regular_file(result.archive));
+    }
+
+    SECTION("explicit extension is respected") {
+        const fs::path target = base / "a.zip";
+        const backup::PackResult result = pack_to(target);
+        REQUIRE(result.archive == target);
+        REQUIRE(fs::is_regular_file(target));
+    }
+
+    SECTION("existing .vbak path is unchanged") {
+        const fs::path target = base / "b.vbak";
+        const backup::PackResult result = pack_to(target);
+        REQUIRE(result.archive == target);
+    }
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}

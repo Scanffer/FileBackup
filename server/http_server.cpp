@@ -69,10 +69,7 @@ void reply_json(httplib::Response& res, int status,
 /// 注意：message 里绝不能出现密码 —— 调用方构造错误信息时也不许拼密码。
 void reply_error(httplib::Response& res, int status, const char* code,
                  const std::string& message) {
-    reply_json(res, status, {{"ok", false},
-                             {"error", message},
-                             {"message", message},
-                             {"code", code}});
+    reply_json(res, status, {{"ok", false}, {"error", message}, {"message", message}, {"code", code}});
 }
 
 /// 读取表单/查询参数；不存在时返回空串（不写错误响应，交给调用方判断）。
@@ -267,9 +264,7 @@ struct DirEntryInfo {
 };
 
 nlohmann::json dir_entry_json(const DirEntryInfo& entry) {
-    return {{"name", entry.name},   {"path", entry.path},
-            {"is_dir", entry.is_dir}, {"size", entry.size},
-            {"mtime_ns", entry.mtime_ns}};
+    return {{"name", entry.name}, {"path", entry.path}, {"is_dir", entry.is_dir}, {"size", entry.size}, {"mtime_ns", entry.mtime_ns}};
 }
 
 std::string ascii_lower(std::string text) {
@@ -383,7 +378,11 @@ TaskBody make_backup_body(BackupTaskParams params) {
             options.progress = progress_cb;
             const PackResult result = pack_directory(options);
 
+            // archive 是规范化后的真实路径：用户可能填的是目录（或以分隔符
+            // 结尾），也可能漏了扩展名，前端要靠这个值回写输入框和展示结果。
+            const std::string archive_u8 = path_to_u8(result.archive);
             out.result = {{"mode", "archive"},
+                          {"archive", archive_u8},
                           {"entries", result.entries_written},
                           {"bytes", result.bytes_written},
                           {"compression", to_string(params.compression)},
@@ -509,10 +508,7 @@ void register_routes(httplib::Server& svr,
     svr.Get("/api/status", [tasks](const httplib::Request&,
                                    httplib::Response& res) {
         const std::size_t task_count = tasks->list().size();
-        reply_json(res, 200, {{"ok", true},
-                              {"service", "FileBackup"},
-                              {"version", version()},
-                              {"task_count", task_count}});
+        reply_json(res, 200, {{"ok", true}, {"service", "FileBackup"}, {"version", version()}, {"task_count", task_count}});
     });
 
     // 算法清单。前端下拉框据此生成，只有 available=true 的才会出现。

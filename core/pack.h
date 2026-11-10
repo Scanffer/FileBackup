@@ -105,6 +105,13 @@ struct PackOptions {
 struct PackResult {
     std::uintmax_t entries_written = 0;
     std::uintmax_t bytes_written = 0;  ///< 原始字节数
+
+    /// 实际写出的归档路径。
+    ///
+    /// 可能与 PackOptions::archive 不同：目标填的是目录（或以分隔符结尾）时
+    /// 会落在该目录内的「源目录名 + .vbak」，目标没有扩展名时会补 `.vbak`。
+    /// 调用方（GUI/CLI）应显示这个值，而不是用户输入的原值。
+    std::filesystem::path archive;
 };
 
 /// 解包选项。

@@ -167,6 +167,61 @@ void require_password_if_encrypted(EncryptionId id,
     }
 }
 
+/// 去掉末尾的分隔符，得到可用的目录名/文件名。
+std::string strip_trailing_sep(std::string text) {
+    while (!text.empty() && (text.back() == '/' || text.back() == '\\')) {
+        text.pop_back();
+    }
+    return text;
+}
+
+/// 把用户填的目标路径规范成真正的归档文件路径。
+///
+/// 手输路径有两条常见的「像目录但不是文件」写法，都要兜住，否则会写出
+/// 一个没有扩展名的文件（系统不认、还原页也看不到）或直接失败：
+///   1. 目标是一个已存在的目录，或以分隔符结尾 —— 落到该目录内，
+///      文件名用「源目录名 + .vbak」；
+///   2. 目标没有任何扩展名 —— 补 ".vbak"。
+/// 已经有扩展名（哪怕是 .zip 之类）时原样尊重，不擅自改写。
+std::filesystem::path normalize_archive_path(
+    const std::filesystem::path& src, const std::filesystem::path& archive) {
+    const std::string raw = archive.u8string();
+    if (raw.empty()) {
+        throw std::runtime_error("归档文件路径为空");
+    }
+
+    const bool trailing_sep =
+        raw.back() == '/' || raw.back() == '\\';
+
+    std::error_code ec;
+    // is_directory 对不存在的路径返回 false 且不报错。
+    const bool existing_dir = std::filesystem::is_directory(archive, ec);
+
+    std::filesystem::path target = archive;
+    if (trailing_sep || existing_dir || target.filename().empty()) {
+        // 源目录名去掉末尾分隔符后再取最后一段，避免空文件名。
+        const std::string src_text = strip_trailing_sep(src.u8string());
+        const std::filesystem::path src_path = path_from_u8(src_text);
+        std::string base = src_path.filename().u8string();
+        if (base.empty()) base = "backup";
+        target /= path_from_u8(base + ".vbak");
+        return target;
+    }
+
+    const std::string ext = target.extension().u8string();
+    bool has_ext = false;
+    for (const char c : ext) {
+        if (c != '.') {
+            has_ext = true;
+            break;
+        }
+    }
+    if (!has_ext) {
+        target += path_from_u8(".vbak");
+    }
+    return target;
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------
@@ -236,7 +291,10 @@ PackResult pack_directory(const PackOptions& opts) {
         files = std::move(kept);
     }
 
-    std::ofstream out(opts.archive, std::ios::binary | std::ios::trunc);
+    const std::filesystem::path archive_path =
+        normalize_archive_path(opts.src, opts.archive);
+
+    std::ofstream out(archive_path, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("无法创建归档文件");
 
     Progress progress;
@@ -366,6 +424,7 @@ PackResult pack_directory(const PackOptions& opts) {
     }
 
     if (!out) throw std::runtime_error("写归档失败");
+    result.archive = archive_path;
     return result;
 }
 
@@ -662,7 +721,7 @@ std::optional<PackArchiveInfo> inspect_archive(
 
     const std::uint32_t entry_count = read_u32(in);
     if (info.version == kVersion1) (void)read_u32(in);  // reserved
-    (void)read_u32(in);                                // data_off
+    (void)read_u32(in);                                 // data_off
     if (info.version >= kVersion3) {
         (void)read_u32(in);  // kdf iterations
         for (int i = 0; i < 16; ++i) (void)in.get();
