@@ -9,19 +9,19 @@
 namespace backup {
 
 struct MirrorOptions {
-    std::filesystem::path src;   ///< 源目录（宽字符构造，别用窄串）
-    std::filesystem::path dst;   ///< 目标目录
-    bool overwrite = true;       ///< 目标已存在时是否覆盖
+    std::filesystem::path src;  ///< 源目录（宽字符构造，别用窄串）
+    std::filesystem::path dst;  ///< 目标目录
+    bool overwrite = true;      ///< 目标已存在时是否覆盖
 
-    Filter filter;               ///< 六维筛选；空表示全选
-    bool keep_metadata = true;   ///< 写 manifest 并保存元数据
-    ProgressFn progress;         ///< 可选进度回调
+    Filter filter;              ///< 六维筛选；空表示全选
+    bool keep_metadata = true;  ///< 写 manifest 并保存元数据
+    ProgressFn progress;        ///< 可选进度回调
 };
 
 struct MirrorResult {
     std::uintmax_t files_copied = 0;
     std::uintmax_t bytes_copied = 0;
-    std::uintmax_t files_skipped = 0;  ///< 已存在且 overwrite=false
+    std::uintmax_t files_skipped = 0;     ///< 已存在且 overwrite=false
     std::uintmax_t entries_filtered = 0;  ///< 被筛选排除的条目数
 };
 
@@ -32,8 +32,8 @@ struct MirrorResult {
 MirrorResult mirror_directory(const MirrorOptions& opts);
 
 struct MirrorRestoreOptions {
-    std::filesystem::path src;   ///< 备份根目录（含 manifest）
-    std::filesystem::path dst;   ///< 还原目标
+    std::filesystem::path src;  ///< 备份根目录（含 manifest）
+    std::filesystem::path dst;  ///< 还原目标
     bool overwrite = true;
     bool restore_metadata = true;  ///< 读取 manifest 并还原元数据
     ProgressFn progress;           ///< 可选进度回调

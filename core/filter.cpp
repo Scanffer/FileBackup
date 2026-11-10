@@ -312,7 +312,10 @@ bool parse_span_unit(const std::string& raw_unit, std::int64_t& out_ns) {
 }
 
 struct TimePredicate {
-    enum class Kind { Last, Before, After, Between };
+    enum class Kind { Last,
+                      Before,
+                      After,
+                      Between };
 
     Kind kind = Kind::Last;
     std::int64_t span_ns = 0;  ///< Kind::Last：最近 span_ns 纳秒
@@ -442,7 +445,12 @@ bool parse_time_predicate(const std::string& raw, TimePredicate& out,
 // ===========================================================================
 
 struct SizePredicate {
-    enum class Kind { Lt, Le, Gt, Ge, Eq, Between };
+    enum class Kind { Lt,
+                      Le,
+                      Gt,
+                      Ge,
+                      Eq,
+                      Between };
 
     Kind kind = Kind::Eq;
     std::uint64_t a = 0;  ///< 比较值 / 区间下界（含）
@@ -646,7 +654,8 @@ bool extension_in_category(const std::string& category, const std::string& ext) 
 // ===========================================================================
 
 struct UserPredicate {
-    enum class Kind { Uid, Owner };
+    enum class Kind { Uid,
+                      Owner };
 
     Kind kind = Kind::Owner;
     std::uint32_t uid = 0;

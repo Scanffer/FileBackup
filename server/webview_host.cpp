@@ -22,7 +22,7 @@
 #endif
 
 #include <windows.h>
-#include <dwmapi.h>   // DwmSetWindowAttribute：让系统标题栏跟随页面切深色
+#include <dwmapi.h>    // DwmSetWindowAttribute：让系统标题栏跟随页面切深色
 #include <shellapi.h>  // ShellExecuteW：结果区「打开目标文件夹」
 #include <shobjidl.h>  // IFileOpenDialog / IFileSaveDialog：原生选择框
 

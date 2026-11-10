@@ -48,13 +48,13 @@ using TaskBody = std::function<TaskOutcome(TaskReporter)>;
 
 /// 任务的一次快照。纯值语义，可以安全地跨线程/跨 handler 传递。
 struct TaskInfo {
-    std::string id;                  ///< 形如 "task-1"
-    std::string kind;                ///< "backup" / "restore"
+    std::string id;    ///< 形如 "task-1"
+    std::string kind;  ///< "backup" / "restore"
     TaskState state = TaskState::Queued;
-    int progress = 0;                ///< 0–99 运行中，100=完成
-    std::string message;             ///< 当前阶段的一句话（排队中/正在打包…/完成）
-    std::string error;               ///< 仅失败时非空
-    nlohmann::json result = nullptr; ///< 仅成功时非空
+    int progress = 0;                 ///< 0–99 运行中，100=完成
+    std::string message;              ///< 当前阶段的一句话（排队中/正在打包…/完成）
+    std::string error;                ///< 仅失败时非空
+    nlohmann::json result = nullptr;  ///< 仅成功时非空
 };
 
 /// 单 worker 的异步任务管理器。

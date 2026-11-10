@@ -182,7 +182,7 @@ TEST_CASE("deflate rejects corrupted or truncated streams", "[deflate]") {
     SECTION("truncated stream") {
         Bytes broken(compressed.begin(),
                      compressed.begin() + static_cast<std::ptrdiff_t>(
-                         compressed.size() / 2));
+                                              compressed.size() / 2));
         const Bytes restored =
             compressor->decompress(broken, data.size(), error);
         REQUIRE(!error.empty());
@@ -361,7 +361,9 @@ TEST_CASE("lz4: decodes hand-built standard blocks", "[lz4][compress]") {
         // 之后 token 0x60 + 6 字面量 "abcabc"。
         // 输出 = "abc" + 复制 9 字节 = "abcabcabcabc"，再加 "abcabc"。
         const Bytes restored = compressor->decompress(
-            from_hex("35616263030060" "616263616263"), 18, error);
+            from_hex("35616263030060"
+                     "616263616263"),
+            18, error);
         REQUIRE(error.empty());
         REQUIRE(text_of(restored) == "abcabcabcabcabcabc");
     }
@@ -483,9 +485,9 @@ TEST_CASE("new compressors: random / binary / >=100KB roundtrip", "[compress]") 
     const std::vector<Bytes> inputs = {
         random_bytes(1, 0x12345678u),
         random_bytes(1000, 0x12345678u),
-        make_pattern(70000),          // 70KB 半随机二进制
+        make_pattern(70000),                  // 70KB 半随机二进制
         random_bytes(128 * 1024, 0xC0FFEEu),  // 128KB 真随机（不可压缩）
-        make_pattern(150000),         // 150KB 周期性二进制
+        make_pattern(150000),                 // 150KB 周期性二进制
     };
     for (const CompressionId id : new_algorithms()) {
         for (const Bytes& data : inputs) {
@@ -574,7 +576,8 @@ TEST_CASE("lz4: malformed blocks are rejected", "[lz4][compress]") {
 
     SECTION("truncated match extension") {
         // token 0x2F：2 字面量，匹配长度扩展被截断。
-        const Bytes broken = from_hex("2f6162" "0300");
+        const Bytes broken = from_hex("2f6162"
+                                      "0300");
         const Bytes restored = compressor->decompress(broken, 20, error);
         REQUIRE(!error.empty());
         REQUIRE(restored.empty());

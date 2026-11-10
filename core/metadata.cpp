@@ -113,7 +113,9 @@ std::optional<Bytes> base64_decode(const std::string& text) {
 // 小端二进制读写
 // ===========================================================================
 
-void append_u8(Bytes& out, std::uint8_t value) { out.push_back(value); }
+void append_u8(Bytes& out, std::uint8_t value) {
+    out.push_back(value);
+}
 
 void append_u16(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<std::uint8_t>(value & 0xFFu));

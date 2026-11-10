@@ -53,7 +53,9 @@ struct TaskManager::Impl {
     /// 待执行队列；worker 每次取队首。
     std::deque<Pending> queue;
 
-    Impl() { worker = std::thread([this] { run(); }); }
+    Impl() {
+        worker = std::thread([this] { run(); });
+    }
     ~Impl() { shutdown(); }
 
     Impl(const Impl&) = delete;

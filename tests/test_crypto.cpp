@@ -361,7 +361,7 @@ TEST_CASE("aes-256-cbc: roundtrip across sizes", "[crypto][aes]") {
     const Bytes key = from_hex(kAesKeyHex);
     const Bytes iv = from_hex(kAesIvHex);
 
-    const std::size_t sizes[] = {0,  1,  2,  15, 16,  17,  31,  32,
+    const std::size_t sizes[] = {0, 1, 2, 15, 16, 17, 31, 32,
                                  33, 63, 64, 65, 255, 256, 1000, 4096};
     for (const std::size_t size : sizes) {
         const Bytes plaintext = make_pattern(size);
@@ -496,7 +496,7 @@ TEST_CASE("chacha20-poly1305: roundtrip across sizes", "[crypto][chacha]") {
     const Bytes key = from_hex(kChaChaRfcKeyHex);
     const Bytes nonce = from_hex(kChaChaRfcNonceHex);
 
-    const std::size_t sizes[] = {0,  1,  2,  15, 16,  17,  63,  64,
+    const std::size_t sizes[] = {0, 1, 2, 15, 16, 17, 63, 64,
                                  65, 114, 255, 256, 1000, 4096};
     for (const std::size_t size : sizes) {
         const Bytes plaintext = make_pattern(size);
@@ -654,9 +654,13 @@ TEST_CASE("rc4: rejects wrong key/iv sizes", "[crypto][rc4]") {
 
 TEST_CASE("base64: RFC 4648 test vectors", "[crypto][base64]") {
     const std::pair<const char*, const char*> cases[] = {
-        {"", ""},         {"f", "Zg=="},     {"fo", "Zm8="},
-        {"foo", "Zm9v"},  {"foob", "Zm9vYg=="},
-        {"fooba", "Zm9vYmE="}, {"foobar", "Zm9vYmFy"},
+        {"", ""},
+        {"f", "Zg=="},
+        {"fo", "Zm8="},
+        {"foo", "Zm9v"},
+        {"foob", "Zm9vYg=="},
+        {"fooba", "Zm9vYmE="},
+        {"foobar", "Zm9vYmFy"},
     };
     std::string error;
     for (const auto& test : cases) {
@@ -693,16 +697,16 @@ TEST_CASE("base64: roundtrip arbitrary bytes", "[crypto][base64]") {
 TEST_CASE("base64: rejects malformed input", "[crypto][base64]") {
     std::string error;
     const char* const bad_inputs[] = {
-        "A",        // 长度不是 4 的倍数
-        "AAAAA",    // 长度不是 4 的倍数
-        "!!!!",     // 非法字符
-        "AA=A",     // 填充符在中间
-        "=AAA",     // 填充符在开头
-        "AAA=AAAA", // 填充符不在最后一组
-        "AB==",     // 尾部填充位非零（非规范编码）
-        "AAB=",     // 尾部填充位非零
-        "Zm9v ",    // 空白字符
-        "Zm9v\n",   // 换行
+        "A",         // 长度不是 4 的倍数
+        "AAAAA",     // 长度不是 4 的倍数
+        "!!!!",      // 非法字符
+        "AA=A",      // 填充符在中间
+        "=AAA",      // 填充符在开头
+        "AAA=AAAA",  // 填充符不在最后一组
+        "AB==",      // 尾部填充位非零（非规范编码）
+        "AAB=",      // 尾部填充位非零
+        "Zm9v ",     // 空白字符
+        "Zm9v\n",    // 换行
     };
     for (const char* input : bad_inputs) {
         const Bytes decoded = backup::base64_decode(input, error);

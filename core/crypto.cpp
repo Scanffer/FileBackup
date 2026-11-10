@@ -25,8 +25,8 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-// 顺序不能反：bcrypt.h 依赖 windows.h 先带入 ULONG / NTSTATUS / NCRYPT_KEY_HANDLE
-// 等基础类型，反过来会报 “'NTSTATUS' does not name a type”。
+// 顺序不能反：bcrypt.h 依赖 windows.h 先带入 ULONG / NTSTATUS /
+// NCRYPT_KEY_HANDLE 等基础类型，反过来会报 “'NTSTATUS' does not name a type”。
 #include <windows.h>
 #include <bcrypt.h>
 
@@ -60,14 +60,14 @@ std::array<std::uint32_t, 256> make_crc32_table() {
     return table;
 }
 // 循环左移位
-std::uint32_t rotl32(std::uint32_t x, unsigned n) { 
+std::uint32_t rotl32(std::uint32_t x, unsigned n) {
     return (x << n) | (x >> (32 - n));
 }
 // 循环右移位
 std::uint32_t rotr32(std::uint32_t x, unsigned n) {
     return (x >> n) | (x << (32 - n));
 }
-//大端
+// 大端
 std::uint32_t load_be32(const std::uint8_t* p) {
     return (static_cast<std::uint32_t>(p[0]) << 24) |
            (static_cast<std::uint32_t>(p[1]) << 16) |
@@ -88,7 +88,7 @@ void store_be64(std::uint8_t* p, std::uint64_t v) {
         v >>= 8;
     }
 }
-//小端
+// 小端
 std::uint32_t load_le32(const std::uint8_t* p) {
     return static_cast<std::uint32_t>(p[0]) |
            (static_cast<std::uint32_t>(p[1]) << 8) |
@@ -132,7 +132,7 @@ constexpr std::size_t kSha256BlockSize = 64;
 constexpr std::size_t kSha256DigestSize = 32;
 
 class Sha256 {
-   public:
+public:
     Sha256() { reset(); }
 
     void reset() {
@@ -180,7 +180,7 @@ class Sha256 {
         return digest;
     }
 
-   private:
+private:
     void compress(const std::uint8_t* block) {
         static constexpr std::uint32_t kRound[64] = {
             0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu,
@@ -734,7 +734,7 @@ void chacha20_xor(const std::uint8_t key[32], std::uint32_t counter_start,
 
 /// Poly1305 一次性认证器（RFC 8439 §2.5，26-bit limb 实现）。
 class Poly1305 {
-   public:
+public:
     explicit Poly1305(const std::uint8_t key[32]) {
         // r 按 RFC 要求 clamp（0x0ffffffc0ffffffc0ffffffc0fffffff）。
         r_[0] = load_le32(key + 0) & 0x3ffffffu;
@@ -856,7 +856,7 @@ class Poly1305 {
         store_le32(tag + 12, static_cast<std::uint32_t>(sum));
     }
 
-   private:
+private:
     void process_block(const std::uint8_t* block, std::uint32_t hibit) {
         const std::uint32_t r0 = r_[0], r1 = r_[1], r2 = r_[2], r3 = r_[3],
                             r4 = r_[4];
@@ -1064,7 +1064,9 @@ int base64_value(char character) {
 
 namespace crypto_detail {
 
-Bytes sha256(const Bytes& data) { return sha256_bytes(data); }
+Bytes sha256(const Bytes& data) {
+    return sha256_bytes(data);
+}
 
 Bytes hmac_sha256(const Bytes& key, const Bytes& data) {
     return hmac_sha256_bytes(key, data);
@@ -1092,7 +1094,9 @@ Bytes pbkdf2_hmac_sha256(const std::string& password, const Bytes& salt,
                                     iterations, key_size);
 }
 
-Bytes rc4(const Bytes& key, const Bytes& data) { return rc4_bytes(key, data); }
+Bytes rc4(const Bytes& key, const Bytes& data) {
+    return rc4_bytes(key, data);
+}
 
 Bytes poly1305(const Bytes& key, const Bytes& message) {
     if (key.size() != 32) return {};
@@ -1174,7 +1178,7 @@ constexpr std::size_t kRc4IvSize = 16;
 constexpr std::size_t kPoly1305TagSize = 16;
 
 class Aes256CbcCipher final : public ICipher {
-   public:
+public:
     EncryptionId id() const override { return EncryptionId::Aes256Cbc; }
     std::size_t key_size() const override { return kAes256KeySize; }
     std::size_t iv_size() const override { return kAesBlockSize; }
@@ -1209,7 +1213,7 @@ class Aes256CbcCipher final : public ICipher {
 };
 
 class ChaCha20Poly1305Cipher final : public ICipher {
-   public:
+public:
     EncryptionId id() const override { return EncryptionId::ChaCha20Poly1305; }
     std::size_t key_size() const override { return kChaCha20KeySize; }
     std::size_t iv_size() const override { return kChaCha20NonceSize; }
@@ -1258,7 +1262,7 @@ class ChaCha20Poly1305Cipher final : public ICipher {
 };
 
 class Rc4Cipher final : public ICipher {
-   public:
+public:
     EncryptionId id() const override { return EncryptionId::Rc4; }
     std::size_t key_size() const override { return kRc4KeySize; }
     std::size_t iv_size() const override { return kRc4IvSize; }
@@ -1279,7 +1283,7 @@ class Rc4Cipher final : public ICipher {
         return rc4_bytes(rc4_seed_key(key, iv), ciphertext);
     }
 
-   private:
+private:
     static bool check_sizes(const Bytes& key, const Bytes& iv,
                             std::string& error) {
         if (key.size() != kRc4KeySize) {

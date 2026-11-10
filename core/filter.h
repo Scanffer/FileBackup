@@ -20,7 +20,7 @@ struct FilterContext {
     std::int64_t mtime_ns = 0;  ///< Unix epoch 纳秒
     EntryType type = EntryType::File;
     std::uint32_t uid = 0;
-    std::string owner;          ///< 属主账户名（UTF-8）
+    std::string owner;  ///< 属主账户名（UTF-8）
 };
 
 /// 六维筛选引擎。

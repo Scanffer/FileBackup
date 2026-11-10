@@ -1,0 +1,36 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++17
+
+# ---- 缩进与行宽 ----
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 0
+MaxEmptyLinesToKeep: 1
+
+# ---- 大括号与访问修饰符 ----
+BreakBeforeBraces: Attach
+AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: None
+
+# ---- 短语句：允许单行 if / for / case（与 Google 规范的主要差异）----
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+
+# ---- 指针与引用：Type* p（左贴）----
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# ---- 注释：行尾注释前保留两空格 ----
+SpacesBeforeTrailingComments: 2
+
+# ---- include：顺序由人控制，避免整仓库重排 ----
+SortIncludes: Never
+IncludeBlocks: Preserve
+---

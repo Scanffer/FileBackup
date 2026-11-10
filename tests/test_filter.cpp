@@ -26,7 +26,9 @@ Filter must_parse(const std::string& text) {
 }
 
 // 字符串字面量与 nlohmann::json 都能隐式构造，加一个 const char* 重载消除歧义。
-Filter must_parse(const char* text) { return must_parse(std::string(text)); }
+Filter must_parse(const char* text) {
+    return must_parse(std::string(text));
+}
 
 Filter must_parse(const nlohmann::json& rules) {
     std::string error;
@@ -147,7 +149,7 @@ TEST_CASE("filter: path 维度 glob", "[filter][path]") {
     const Case cases[] = {
         {"docs/**", "docs/a.txt", true},
         {"docs/**", "docs/sub/deep/b.pdf", true},
-        {"docs/**", "docs", true},          // 目录本身也命中
+        {"docs/**", "docs", true},  // 目录本身也命中
         {"docs/**", "docs2/a.txt", false},
         {"docs/**", "other/docs/a.txt", false},
         {"src/*.cpp", "src/main.cpp", true},
@@ -163,11 +165,11 @@ TEST_CASE("filter: path 维度 glob", "[filter][path]") {
         {"docs/**/*.txt", "docs/sub/a.txt", true},
         {"docs/**/*.txt", "docs/sub/a.md", false},
         {"*.txt", "a.txt", true},
-        {"*.txt", "docs/a.txt", false},     // 单 * 不跨目录
+        {"*.txt", "docs/a.txt", false},  // 单 * 不跨目录
         {"**", "任意/路径/文件.bin", true},
         {"**", "", true},
-        {"docs/", "docs/a.txt", true},      // 以 / 结尾等价 docs/**
-        {"docs", "docs/a.txt", true},       // 纯字面量按目录前缀
+        {"docs/", "docs/a.txt", true},  // 以 / 结尾等价 docs/**
+        {"docs", "docs/a.txt", true},   // 纯字面量按目录前缀
         {"docs", "docs", true},
         {"docs", "docs2/a.txt", false},
         {"DOCS/**", "docs/sub/a.txt", true},  // 大小写不敏感
@@ -296,7 +298,14 @@ TEST_CASE("filter: size 维度表达式", "[filter][size]") {
 
 TEST_CASE("filter: size 非法表达式", "[filter][size][error]") {
     const std::vector<std::string> bad = {
-        "100XB", "abc", "<", ">= ", "10MB..1KB", "-1KB", "1KB..", "..1KB",
+        "100XB",
+        "abc",
+        "<",
+        ">= ",
+        "10MB..1KB",
+        "-1KB",
+        "1KB..",
+        "..1KB",
     };
     for (const std::string& expression : bad) {
         INFO("expr=" << expression);
@@ -358,8 +367,12 @@ TEST_CASE("filter: time 维度表达式", "[filter][time]") {
 
 TEST_CASE("filter: time 非法表达式", "[filter][time][error]") {
     const std::vector<std::string> bad = {
-        "before 2025-13-01", "2025-02-30..2025-03-01", "last x days",
-        "garbage", "", "2025/02/30",
+        "before 2025-13-01",
+        "2025-02-30..2025-03-01",
+        "last x days",
+        "garbage",
+        "",
+        "2025/02/30",
     };
     for (const std::string& expression : bad) {
         INFO("expr=" << expression);
@@ -431,18 +444,16 @@ TEST_CASE("filter: user 非法表达式", "[filter][user][error]") {
 
 TEST_CASE("filter: 规则内 AND、同维度 OR、include/exclude 语义", "[filter][logic]") {
     SECTION("规则内维度 AND") {
-        const Filter filter = must_parse(make_rules({
-            nlohmann::json{{"action", "include"},
-                           {"path", "docs/**"},
-                           {"name", "*.pdf"}}}));
+        const Filter filter = must_parse(make_rules({nlohmann::json{{"action", "include"},
+                                                                    {"path", "docs/**"},
+                                                                    {"name", "*.pdf"}}}));
         CHECK(filter.match(context("docs/a.pdf")));
         CHECK_FALSE(filter.match(context("docs/a.txt")));
         CHECK_FALSE(filter.match(context("other/a.pdf")));
     }
 
     SECTION("同维度多值 OR") {
-        const Filter filter = must_parse(make_rules({
-            nlohmann::json{{"action", "include"}, {"name", "*.pdf,*.txt"}}}));
+        const Filter filter = must_parse(make_rules({nlohmann::json{{"action", "include"}, {"name", "*.pdf,*.txt"}}}));
         CHECK(filter.match(context("a.pdf")));
         CHECK(filter.match(context("a.txt")));
         CHECK_FALSE(filter.match(context("a.md")));
@@ -591,9 +602,8 @@ TEST_CASE("filter: 非法规则报错带规则序号", "[filter][error]") {
 
 TEST_CASE("filter: 更多边界写法", "[filter][edge]") {
     SECTION("path 数组形式") {
-        const Filter filter = must_parse(make_rules({
-            nlohmann::json{{"action", "include"},
-                           {"path", nlohmann::json::array({"docs/**", "src/*.cpp"})}}}));
+        const Filter filter = must_parse(make_rules({nlohmann::json{{"action", "include"},
+                                                                    {"path", nlohmann::json::array({"docs/**", "src/*.cpp"})}}}));
         CHECK(filter.match(context("docs/a.txt")));
         CHECK(filter.match(context("src/main.cpp")));
         CHECK_FALSE(filter.match(context("other/a.txt")));
@@ -639,7 +649,8 @@ TEST_CASE("filter: 更多边界写法", "[filter][edge]") {
     }
 }
 
-TEST_CASE("filter: to_json 可往返", "[filter][json]") {    const std::string original = R"([
+TEST_CASE("filter: to_json 可往返", "[filter][json]") {
+    const std::string original = R"([
         {"action":"include","path":"docs/**","name":"*.pdf"},
         {"action":"exclude","type":"tmp,bak"},
         {"action":"include","size":">= 1KB,< 100MB"},

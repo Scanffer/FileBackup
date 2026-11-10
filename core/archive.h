@@ -29,7 +29,7 @@ struct ArchiveOptions {
     EncryptionId encryption = EncryptionId::None;
     std::string password;  ///< encryption != None 时必填
 
-    Filter filter;         ///< 空表示不筛选
+    Filter filter;  ///< 空表示不筛选
     bool keep_metadata = true;
     bool overwrite = true;
 };

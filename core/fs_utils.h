@@ -18,8 +18,8 @@ struct FileEntry {
     std::string relative_path;
 
     EntryType type = EntryType::File;
-    std::uintmax_t size = 0;      ///< 普通文件的字节数；其它类型为 0
-    std::string link_target;      ///< 符号链接目标（UTF-8）
+    std::uintmax_t size = 0;  ///< 普通文件的字节数；其它类型为 0
+    std::string link_target;  ///< 符号链接目标（UTF-8）
 };
 
 /// 递归扫描 root 下的条目。

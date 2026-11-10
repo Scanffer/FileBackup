@@ -48,8 +48,8 @@ std::optional<EncryptionId> encryption_from_string(const std::string& s);
 
 /// 给 GUI / CLI 展示的算法元信息。
 struct AlgorithmInfo {
-    std::string id;        ///< 稳定 ID（小写），与 from_string 一致
-    std::string label;     ///< 显示名
+    std::string id;     ///< 稳定 ID（小写），与 from_string 一致
+    std::string label;  ///< 显示名
     bool has_level = false;
     bool self_made = false;  ///< true = 本项目自己实现，用于界面标注
     std::string note;

@@ -42,17 +42,17 @@ constexpr int kHashBits = 15;
 constexpr int kHashSize = 1 << kHashBits;
 constexpr std::size_t kBlockInput = 128 * 1024;  // 每块最多 128KB 原始数据
 
-constexpr int kLengthBase[29] = {3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
-                                 15, 17, 19, 23,  27,  31,  35,  43,  51, 59,
+constexpr int kLengthBase[29] = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13,
+                                 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
                                  67, 83, 99, 115, 131, 163, 195, 227, 258};
 constexpr int kLengthExtra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
                                   2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-constexpr int kDistBase[30] = {1,    2,    3,    4,     5,     7,    9,    13,
-                               17,   25,   33,   49,    65,    97,   129,  193,
-                               257,  385,  513,  769,   1025,  1537, 2049, 3073,
+constexpr int kDistBase[30] = {1, 2, 3, 4, 5, 7, 9, 13,
+                               17, 25, 33, 49, 65, 97, 129, 193,
+                               257, 385, 513, 769, 1025, 1537, 2049, 3073,
                                4097, 6145, 8193, 12289, 16385, 24577};
-constexpr int kDistExtra[30] = {0, 0, 0,  0,  1,  1,  2,  2,  3,  3,
-                                4, 4, 5,  5,  6,  6,  7,  7,  8,  8,
+constexpr int kDistExtra[30] = {0, 0, 0, 0, 1, 1, 2, 2, 3, 3,
+                                4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
                                 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ constexpr int kDistExtra[30] = {0, 0, 0,  0,  1,  1,  2,  2,  3,  3,
 // ---------------------------------------------------------------------------
 
 class BitWriter {
-   public:
+public:
     void put_bits(std::uint32_t value, int count) {
         for (int i = 0; i < count; ++i) {
             bitbuf_ |= ((value >> i) & 1u) << bitcount_;
@@ -91,14 +91,14 @@ class BitWriter {
         return std::move(out_);
     }
 
-   private:
+private:
     Bytes out_;
     std::uint32_t bitbuf_ = 0;
     int bitcount_ = 0;
 };
 
 class BitReader {
-   public:
+public:
     BitReader(const std::uint8_t* data, std::size_t size)
         : data_(data), size_(size) {}
 
@@ -118,7 +118,7 @@ class BitReader {
 
     bool byte_aligned() const { return (bit_ & 7) == 0; }
 
-   private:
+private:
     const std::uint8_t* data_;
     std::size_t size_;
     std::size_t bit_ = 0;
@@ -129,7 +129,7 @@ class BitReader {
 // ---------------------------------------------------------------------------
 
 class HuffmanTree {
-   public:
+public:
     /// 用 code lengths 建树；返回 false 表示长度表不合法（超长/冲突）。
     bool build(const std::uint8_t* lengths, int count) {
         nodes_.assign(1, Node{-1, -1, -1});
@@ -192,7 +192,7 @@ class HuffmanTree {
 
     bool empty() const { return empty_; }
 
-   private:
+private:
     struct Node {
         int child[2];
         int symbol;
@@ -260,7 +260,7 @@ std::uint32_t adler32(const Bytes& data) {
 // ---------------------------------------------------------------------------
 
 class DeflateCompressor final : public ICompressor {
-   public:
+public:
     CompressionId id() const override { return CompressionId::Deflate; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -524,9 +524,9 @@ class DeflateCompressor final : public ICompressor {
                     return {};
                 }
 
-                static constexpr int kOrder[19] = {16, 17, 18, 0,  8, 7,  9,
-                                                   6,  10, 5,  11, 4, 12, 3,
-                                                   13, 2,  14, 1,  15};
+                static constexpr int kOrder[19] = {16, 17, 18, 0, 8, 7, 9,
+                                                   6, 10, 5, 11, 4, 12, 3,
+                                                   13, 2, 14, 1, 15};
                 std::uint8_t cl_lengths[19] = {};
                 for (std::uint32_t i = 0; i < hclen; ++i) {
                     std::uint32_t v = 0;
@@ -708,7 +708,7 @@ class DeflateCompressor final : public ICompressor {
 // ===========================================================================
 
 class Lz4Compressor final : public ICompressor {
-   public:
+public:
     CompressionId id() const override { return CompressionId::Lz4; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -919,7 +919,7 @@ class Lz4Compressor final : public ICompressor {
 // ===========================================================================
 
 class RleCompressor final : public ICompressor {
-   public:
+public:
     CompressionId id() const override { return CompressionId::Rle; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
@@ -1050,7 +1050,7 @@ int lzw_width(std::size_t emitted_since_clear) {
 }
 
 class LzwCompressor final : public ICompressor {
-   public:
+public:
     CompressionId id() const override { return CompressionId::Lzw; }
 
     Bytes compress(const Bytes& input, int level, std::string& error) override {
