@@ -1,6 +1,6 @@
 {
   // 让 C/C++ 插件的 IntelliSense 使用 CMake 生成的编译数据库。
-  // 没有它，编辑器不知道 core/ 在哪，会把 cli/main.cpp 里的
+  // 没有它，编辑器不知道 core/ 在哪，会把 server/ 里的
   // #include "fs_utils.h" 标成红线 —— 但那是编辑器的误报，编译是好的。
   //
   // 该文件由 CMakeLists.txt 里的 CMAKE_EXPORT_COMPILE_COMMANDS 生成，

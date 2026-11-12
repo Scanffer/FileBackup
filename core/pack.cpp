@@ -638,6 +638,17 @@ UnpackResult unpack_archive(const UnpackOptions& opts) {
                                      ec.message());
         }
 
+        // 上一次还原会按元数据把只读属性贴回目标文件，直接打开会失败；
+        // 覆盖写之前先清掉只读位，写完再由 apply_metadata 恢复。
+        ec.clear();
+        if (std::filesystem::exists(to, ec) && !ec) {
+            std::string readonly_error;
+            if (!clear_readonly(to, readonly_error)) {
+                throw std::runtime_error("无法清除只读属性：" + rel + "：" +
+                                         readonly_error);
+            }
+        }
+
         std::ofstream out(to, std::ios::binary | std::ios::trunc);
         if (!out) throw std::runtime_error("无法写入：" + rel);
         if (!data.empty()) {

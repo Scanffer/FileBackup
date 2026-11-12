@@ -1,17 +1,16 @@
 #include "algorithm.h"
 
 // ---------------------------------------------------------------------------
-// crypto.cpp —— 全部密码学算法自研实现（不调用 OpenSSL / Windows CNG 的算法
-// 接口；仅 random_bytes 使用 BCryptGenRandom 作为系统随机源）。
+// crypto.cpp 
 //
 //   本文件包含：
-//     SHA-256 / HMAC-SHA256 / PBKDF2-HMAC-SHA256       (FIPS 180-4 / RFC 2104 /
-//     RFC 8018) AES-256 + CBC + PKCS#7                          (FIPS 197 /
-//     NIST SP 800-38A) ChaCha20-Poly1305                               (RFC
-//     8439) RC4                                             (教学用流密码)
-//   Base64 / hex / CRC32 / 加密算法注册表等工具函数。
+//     SHA-256 / HMAC-SHA256 / PBKDF2-HMAC-SHA256  (FIPS 180-4 / RFC 2104 /  RFC 8018)  
+//     AES-256 + CBC + PKCS#7                      (FIPS 197 /   NIST SP 800-38A)
+//     ChaCha20-Poly1305                           (RFC 8439）
+//     RC4                                      
+//     数学工具函数。
 //
-// 设计要点（与 VBAK v3 归档格式的约定一致）：
+// 设计要点：
 //   * AES-256-CBC：key 32 字节、IV 16 字节，PKCS#7 填充（空明文也补一块）。
 //   * ChaCha20-Poly1305：key 32 字节、nonce 12 字节；16 字节认证标签附在
 //     密文尾部（ciphertext || tag），解密时先校验标签再解密。ICipher 没有

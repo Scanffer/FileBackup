@@ -1,7 +1,6 @@
 # backup_server —— Web GUI 的 HTTP 层（静态库）
 #
-# 这里**没有 main()**。程序入口始终是 cli/main.cpp 的 wmain，
-# 这样 CLI 和 GUI 才能共用同一个 FileBackup.exe（README §3.4「单 exe 交付」）。
+# 这里**没有 main()**。程序入口是 gui/main.cpp 的 wWinMain，
 # server 只是被链接进去的一段代码，不是独立程序。
 #
 # 与 README §8 目录规划的两处有意偏离：
@@ -21,8 +20,8 @@ add_library(backup_server STATIC
     webview_host.h    # 同上
 )
 
-# PUBLIC 而不是 PRIVATE：http_server.h 是给 cli/ 用的公开接口，
-# 链接 backup_server 的一方必须能找到它，否则 cli/main.cpp 会
+# PUBLIC 而不是 PRIVATE：http_server.h 是给 gui/ 用的公开接口，
+# 链接 backup_server 的一方必须能找到它，否则 gui/main.cpp 会
 # "fatal error: http_server.h: No such file or directory"。
 target_include_directories(backup_server
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
@@ -46,7 +45,7 @@ target_link_libraries(backup_server
 #   undefined reference to `__imp_WSAStartup' / `__imp_select' / `__imp_bind'
 #
 # 这些是 PRIVATE，但会随 backup_server 传到最终 exe 的链接行，
-# 所以 cli/ 那边不需要再写一遍。
+# 所以 gui/ 那边不需要再写一遍。
 if(WIN32)
     target_link_libraries(backup_server PRIVATE
         ws2_32    # winsock —— httplib 用

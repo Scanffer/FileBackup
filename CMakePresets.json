@@ -4,7 +4,7 @@
   "configurePresets": [
     {
       "name": "mingw-release",
-      "displayName": "MinGW x64 Release（单 exe 交付）",
+      "displayName": "MinGW x64 Release",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/mingw-release",
       "cacheVariables": {

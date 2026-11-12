@@ -28,9 +28,9 @@ struct WebOptions {
 ///
 /// ---- 为什么这个头文件里看不到 httplib ----
 /// httplib.h 会拉进 <winsock2.h>，而 <winsock2.h> 必须早于 <windows.h>
-/// 包含，顺序一乱就是满屏的结构体重定义错误。让调用方（cli/main.cpp）
+/// 包含，顺序一乱就是满屏的结构体重定义错误。让调用方（gui/main.cpp）
 /// 完全不接触 httplib 类型，这个顺序陷阱就根本不可能发生。
-/// 同理，-municode 要求的 wmain 也留在 cli 侧，server 不掺和入口的事。
+/// 同理，-municode 要求的 wWinMain 也留在 gui 侧，server 不掺和入口的事。
 int run_web_server(const WebOptions& opts);
 
 }  // namespace backup

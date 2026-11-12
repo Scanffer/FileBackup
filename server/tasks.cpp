@@ -115,7 +115,6 @@ struct TaskManager::Impl {
                 if (it == tasks.end()) continue;  // 理论上不会发生
                 it->second.state = TaskState::Running;
                 // 刚开始执行时给 1，随后由 core 的 ProgressFn 覆盖成真实
-                // 百分比；不要写 50，否则用户会看到 50%→1% 的瞬时回跳。
                 it->second.progress = 1;
                 it->second.message = pending.running_message;
             }

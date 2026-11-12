@@ -3,8 +3,6 @@
 // httplib.h 必须放在 <windows.h> 之前。
 // 它会引入 <winsock2.h>，而 winsock2.h 一定要早于 windows.h 包含，
 // 否则就是满屏的 fd_set / timeval / sockaddr 结构体重定义错误。
-// （另：httplib.h 顶部有一个 _WIN32_WINNT < 0x0A00 就 #error 的检查，
-//  本项目不受影响 —— MinGW 的 _mingw.h 默认定义为 0xa00。）
 #include "httplib.h"
 
 #include <algorithm>
@@ -548,7 +546,7 @@ void register_routes(httplib::Server& svr,
     //   2. 15 秒没有任何事件 → 发一行 SSE 注释（`: ping\n\n`）当心跳，
     //      防止 WebView2 把空闲连接掐掉；
     //   3. 客户端断开（sink.write 失败）或服务正在关闭 → 立刻返回 false 收尾。
-    // 每个连接占 httplib 线程池一个线程，但本地单用户只会有 1~2 个，够用。
+    // 每个连接占 httplib 线程池一个线程
     svr.Get(R"(/api/tasks/([A-Za-z0-9_-]+)/stream)",
             [tasks, shutting_down](const httplib::Request& req,
                                    httplib::Response& res) {
@@ -752,8 +750,7 @@ void register_routes(httplib::Server& svr,
 
     // ---- 备份（异步任务） ------------------------------------------------
     //
-    // 字段与语义刻意和 CLI 对齐（cli/main.cpp 的 backup 分支）：
-    // 指定了 pack 时 dst 是归档文件路径，否则 dst 是目标目录。
+    // 语义约定：指定了 pack 时 dst 是归档文件路径，否则 dst 是目标目录。
     // 这里只做参数校验 + 入队；真正的 pack_directory / mirror_directory
     // 在 TaskManager 的 worker 线程里跑，HTTP 立刻返回 task_id。
     svr.Post("/api/backup",
@@ -1045,11 +1042,6 @@ void open_browser(int port) {
 
 int run_web_server(const WebOptions& opts) {
     // 每个端口都要 new 一个新的 Server 对象。
-    //
-    // bind_to_port 失败会把对象标记成 is_decommissioned（httplib.h:13032），
-    // 之后 bind_internal 直接返回 -1 不再尝试（httplib.h:13624）——
-    // 也就是说**同一个对象重试永远不会成功**。
-    // 这是「先试 8080，被占用就试 8081」这种代码最经典的写法错误。
     std::unique_ptr<httplib::Server> svr;
     int chosen = 0;
     constexpr int kPortTries = 20;
@@ -1059,8 +1051,6 @@ int run_web_server(const WebOptions& opts) {
         // 必须在 bind_to_port 之前设置：httplib 在创建 socket 时应用这些
         // 选项，然后才 bind（见 httplib.h 里 create_server_socket 的顺序）。
         candidate->set_socket_options(server_socket_options);
-        // 绑 127.0.0.1 而不是 0.0.0.0：既避开 Windows 防火墙弹窗
-        // （演示时被点「取消」就尴尬了），也不把服务暴露到局域网。
         if (candidate->bind_to_port("127.0.0.1", p)) {
             svr = std::move(candidate);
             chosen = p;
@@ -1076,9 +1066,6 @@ int run_web_server(const WebOptions& opts) {
 
     // 异步任务管理器。所有备份/还原都入队到一个后台 worker 里串行执行，
     // 避免两个请求同时往一个目标目录写文件。
-    //
-    // shutting_down 是给 SSE 连接用的：关窗口时置位，正在轮询任务状态的
-    // SSE 线程才会尽快收尾，不会被线程池的 join 卡住几百毫秒。
     const auto tasks = std::make_shared<TaskManager>();
     const auto shutting_down = std::make_shared<std::atomic<bool>>(false);
 
@@ -1102,19 +1089,16 @@ int run_web_server(const WebOptions& opts) {
         const webview::ShowResult r =
             webview::show_url(url, L"FileBackup —— 文件备份");
         if (r == webview::ShowResult::Closed) {
-            // 关窗口 = 退出程序。这正是原生窗口相对浏览器方案的价值：
-            // 窗口就在本进程里，关掉它我们能顺手把服务停了；浏览器方案
-            // 关掉标签页之后服务会一直挂着占住端口。
+            // 关窗口 = 退出程序。
             shutting_down->store(true);  // 让 SSE 连接尽快收尾
             svr->stop();
             server_thread.join();
             std::cout << "窗口已关闭，服务停止。\n";
             return 0;
         }
-        // Unavailable：这台机器没装 WebView2 运行时（LTSC、或被企业策略
-        // 移除了 Edge），退回浏览器。窗口是隐藏创建的，所以用户不会看到
+        // Unavailable：这台机器没装 WebView2 运行时，退回浏览器。窗口是隐藏创建的，所以用户不会看到
         // 一个白窗口闪一下再消失。
-        std::cout << "（WebView2 不可用，改用浏览器打开）\n";
+        std::cout << "(WebView2 不可用，改用浏览器打开）\n";
     }
 
     if (opts.open_browser) {

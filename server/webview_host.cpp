@@ -297,7 +297,10 @@ std::wstring PickOpenPath(HWND owner, bool pick_folders, bool vbak_filter) {
 }
 
 /// 「另存为」选择框（打包时选 .vbak 输出路径）。取消返回空串。
-std::wstring PickSavePath(HWND owner) {
+///
+/// default_name 是页面传来的建议文件名（源目录名 + .vbak）；为空时退回
+/// backup.vbak。带着它打开，用户多半只需要选个目录就能确定。
+std::wstring PickSavePath(HWND owner, const std::wstring& default_name) {
     IFileSaveDialog* dialog = nullptr;
     if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr,
                                 CLSCTX_INPROC_SERVER, IID_IFileSaveDialog,
@@ -312,7 +315,8 @@ std::wstring PickSavePath(HWND owner) {
     dialog->SetFileTypes(static_cast<UINT>(ARRAYSIZE(filters)), filters);
     dialog->SetFileTypeIndex(1);
     dialog->SetDefaultExtension(L"vbak");
-    dialog->SetFileName(L"backup.vbak");
+    dialog->SetFileName(default_name.empty() ? L"backup.vbak"
+                                             : default_name.c_str());
 
     FILEOPENDIALOGOPTIONS options = 0;
     if (SUCCEEDED(dialog->GetOptions(&options))) {
@@ -459,8 +463,14 @@ private:
             ReplyPicked(PickOpenPath(hwnd_, true, false));
         } else if (command == L"pick:file") {
             ReplyPicked(PickOpenPath(hwnd_, false, true));
-        } else if (command == L"pick:save") {
-            ReplyPicked(PickSavePath(hwnd_));
+        } else if (command.rfind(L"pick:save", 0) == 0) {
+            // "pick:save" 或 "pick:save|<建议文件名>"；页面按源目录名生成。
+            std::wstring default_name;
+            const std::size_t bar = command.find(L'|');
+            if (bar != std::wstring::npos && bar + 1 < command.size()) {
+                default_name = command.substr(bar + 1);
+            }
+            ReplyPicked(PickSavePath(hwnd_, default_name));
         } else if (command == L"window:drag") {
             // 系统拖拽窗口的标准做法：把这次按下当成拖拽标题栏。
             // 最大化状态下 Windows 会先还原再跟着鼠标走。

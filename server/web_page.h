@@ -298,6 +298,26 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
       margin-top: 0;
       padding: 1.25rem var(--gutter) 1rem 1.25rem;
       border-left: 1px solid var(--border);
+      /* 纵向 flex 栈：最后一张「最近任务」卡片吃掉剩余高度，列表内部滚动。 */
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 前面的卡片按内容高度，不参与压缩。 */
+    .col-side > .panel { flex: 0 0 auto; }
+
+    .col-side > #tasks-panel {
+      flex: 1 1 auto;
+      min-height: 9rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 覆盖窄屏的固定 max-height：让列表跟随卡片高度，底部不再留空。 */
+    .col-side > #tasks-panel .task-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
     }
 
     .col-side .panel {
@@ -983,7 +1003,8 @@ inline constexpr char kIndexHtml[] = R"FBHTML(<!doctype html>
     display: flex;
     flex-direction: column;
     gap: .35rem;
-    /* 最多显示几条就滚，不拿历史任务把页面撑长。 */
+    /* 窄屏（单列、整页滚动）限制高度，不拿历史任务把页面撑长；
+       宽屏在下面被覆盖成「吃掉右栏剩余高度」。 */
     max-height: 10.5rem;
     overflow: auto;
     margin: 0;
@@ -1810,9 +1831,7 @@ function fillCompressionOptions() {
   for (const algo of compressAlgorithms) {
     const option = document.createElement("option");
     option.value = algo.id;
-    let label = algo.label || algo.id;
-    if (algo.self_made) label += "（自研）";
-    else if (algo.id !== "none") label += "（库）";
+    const label = algo.label || algo.id;
     option.textContent = label;
     select.appendChild(option);
   }
@@ -1834,8 +1853,7 @@ function fillEncryptionOptions() {
   for (const algo of encryptAlgorithms) {
     const option = document.createElement("option");
     option.value = algo.id;
-    let label = algo.label || algo.id;
-    if (algo.self_made) label += "（自研）";
+    const label = algo.label || algo.id;
     option.textContent = label;
     select.appendChild(option);
   }
@@ -2471,8 +2489,12 @@ function describe() {
         : "就绪：将把源目录完整复制到目标目录，已存在的文件会跳过。",
       srcLabel: "源目录",
       srcPlaceholder: "例如 D:\\我的文档",
-      dstLabel: pack ? "归档文件" : "目标位置",
-      dstPlaceholder: pack ? "例如 D:\\备份\\docs.vbak" : "例如 D:\\备份",
+      dstLabel: "目标位置",
+      // 两种输出方式的第二栏都是「一个路径」，只是路径指向的东西不同：
+      // 镜像模式指向目录，打包模式指向 .vbak 文件（给目录也照样能用）。
+      dstPlaceholder: pack
+        ? "例如 D:\\备份\\docs.vbak，或只填目录 D:\\备份"
+        : "例如 D:\\备份",
       kindHidden: true,
       packHidden: false,
       compressHidden: false,
@@ -2960,10 +2982,23 @@ if (hasNativeChrome) {
     return "folder";
   }
 
+  /// 打包时的建议归档文件名：与 core 的自动命名规则一致（源目录名 + .vbak）。
+  /// 源目录没填或取不出名字时退回 backup.vbak。
+  function suggestedArchiveName() {
+    const src = $("src").value.trim().replace(/[\\/]+$/, "");
+    const parts = src.split(/[\\/]/).filter(Boolean);
+    const base = parts.length ? parts[parts.length - 1] : "";
+    return (base || "backup") + ".vbak";
+  }
+
   for (const button of browseButtons) {
     button.addEventListener("click", () => {
       pendingPickTarget = button.dataset.target;
-      postWindowCommand("pick:" + pickKindFor(pendingPickTarget));
+      const kind = pickKindFor(pendingPickTarget);
+      // 「另存为」需要带默认文件名：否则每次都要重新敲一遍名字。
+      postWindowCommand(
+        kind === "save" ? "pick:save|" + suggestedArchiveName() : "pick:" + kind
+      );
     });
   }
 
@@ -3841,9 +3876,8 @@ $("form").addEventListener("submit", async (e) => {
     return;
   }
 
-  // 字段名与语义和 CLI 的 --src / --dst / --pack / --archive 一一对应
-  // （见 cli/main.cpp 的 backup / restore 分支），GUI 和 CLI 走的是同一批
-  // backup:: 函数，行为不可能漂移。
+  // 表单字段与后端 /api/backup、/api/restore 的参数一一对应，
+  // 前端只负责收集与校验，真正的备份逻辑在 backup:: 一侧。
   let url;
   const params = {};
   if (state.mode === "backup") {

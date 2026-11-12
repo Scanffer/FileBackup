@@ -34,7 +34,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #   libwinpthread-1.dll —— 换一台没装 MinGW 的机器就跑不起来。
 #
 # -municode 不放在这里：它会让所有可执行文件都要求 wWinMain，而测试程序
-# 用的是普通的 main。只给 FileBackup.exe 单独加（见 cli/CMakeLists.txt）。
+# 用的是普通的 main。只给 FileBackup.exe 单独加（见 gui/CMakeLists.txt）。
 #
 # 验收方法：objdump -p build/mingw-release/FileBackup.exe | grep "DLL Name"
 # 输出里不应出现上面那三个 dll。
@@ -45,14 +45,13 @@ endif()
 # ---------------------------------------------------------------------------
 # 子目录
 #   分层原则（README §4）：core 不依赖 HTTP、不依赖任何前端概念，
-#   可被 cli 与 server 共同链接。
+#   可被 server 单独链接，也能被测试程序直接链接。
 #
 #   顺序注意：third_party 要先于 core —— core 链接 json 的 target。
 # ---------------------------------------------------------------------------
 add_subdirectory(third_party)  # httplib / WebView2 / json / Catch2
 add_subdirectory(core)         # backup_core 静态库：备份引擎
 add_subdirectory(server)       # backup_server 静态库：Web GUI 的 HTTP 层（无 main）
-add_subdirectory(cli)          # FileBackup-cli.exe：命令行入口
 if(WIN32)
     add_subdirectory(gui)      # FileBackup.exe：图形界面入口（无控制台）
 endif()

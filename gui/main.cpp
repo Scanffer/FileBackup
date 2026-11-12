@@ -1,16 +1,9 @@
 // FileBackup.exe —— 图形界面入口（Windows GUI 子系统）
 //
-// 和 CLI 分开成两个 exe 之后：
 //   - 这里链接的是 -mwindows，进程没有控制台窗口，双击启动就是一个
 //     干净的应用窗口；
-//   - 所有业务逻辑仍然在 backup_core / backup_server 里，CLI 与 GUI
-//     共享同一套实现。
+//   - 所有业务逻辑仍然在 backup_core / backup_server 里
 //
-// 支持少量调试参数（见 print_usage / README）：
-//   --port <端口>   起始端口，默认 8080，被占用时自动往后试
-//   --browser       用浏览器打开，不开原生 WebView2 窗口
-//   --no-browser    只起 HTTP 服务，什么都不打开（curl / 截图用）
-// 为了兼容旧的单 exe 调用方式，开头的 "gui" / "--gui" / "web" 会被忽略。
 
 #include "http_server.h"
 
@@ -100,7 +93,7 @@ int APIENTRY wWinMain(HINSTANCE /*instance*/, HINSTANCE /*prev_instance*/,
 #else
 
 int main() {
-    // 本项目的 GUI 依赖 Windows WebView2，非 Windows 平台请使用 CLI。
+    // 本项目的 GUI 依赖 Windows WebView2
     return 1;
 }
 

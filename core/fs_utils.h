@@ -35,8 +35,8 @@ struct FileEntry {
 /// ---- 调用方注意（Windows）----
 /// root 必须能从宽字符构造。**不要**用窄字符串（如 argv 的 char*）去构造它：
 /// MinGW 下 std::filesystem::path 从非 ASCII 窄字符串构造会直接抛异常，
-/// 中文目录名（「我的文档」）会让程序崩溃。用 wmain 拿 wchar_t** 参数，
-/// 再直接赋给 path 即可。详见 cli/main.cpp 中 wmain 的说明。
+/// 中文目录名（「我的文档」）会让程序崩溃。用 wWinMain / wmain 拿 wchar_t**
+/// 参数，再直接赋给 path 即可。详见 gui/main.cpp 中 wWinMain 的说明。
 std::vector<FileEntry> scan_tree(const std::filesystem::path& root,
                                  bool include_directories = true,
                                  bool include_links = false);
@@ -53,5 +53,15 @@ std::vector<FileEntry> list_files(const std::filesystem::path& root);
 /// 凡是「UTF-8 字符串 -> 路径」的地方都要走这里，不要各处自己写一份：
 /// 归档格式、manifest 里存的都是 UTF-8，HTTP 层从浏览器收到的也是 UTF-8。
 std::filesystem::path path_from_u8(const std::string& s);
+
+/// 清除文件的只读属性（Windows 的 FILE_ATTRIBUTE_READONLY 位）。
+///
+/// 为什么需要：备份/还原会按元数据把只读属性贴回目标文件，于是**上一次**
+/// 的产物在下一次覆盖写时打不开 —— 解包走 std::ofstream、镜像复制走
+/// fs::copy_file，两者都会在只读目标上失败，报「无法写入 / 复制失败」。
+/// 覆盖写之前先调一次，写完再按元数据恢复，语义不变。
+///
+/// 目标不存在时视为成功（无需清除）；清除失败返回 false 并填 error。
+bool clear_readonly(const std::filesystem::path& path, std::string& error);
 
 }  // namespace backup

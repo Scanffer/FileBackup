@@ -19,7 +19,7 @@ namespace backup {
 
 enum class PackId : std::uint8_t {
     Vbak = 0,   ///< 自研单容器格式
-    Ustar = 1,  ///< 兼容 tar（P1，暂未实现）
+    Ustar = 1,  ///< 兼容 tar（未实现）
 };
 
 enum class CompressionId : std::uint8_t {
@@ -28,7 +28,7 @@ enum class CompressionId : std::uint8_t {
     Lz4 = 2,
     Zstd = 3,
     Rle = 4,
-    Lzw = 5,  ///< 自研，替代 README 原计划中的 Zstd 计分位
+    Lzw = 5,  
 };
 
 enum class EncryptionId : std::uint8_t {
@@ -46,7 +46,7 @@ std::optional<PackId> pack_from_string(const std::string& s);
 std::optional<CompressionId> compression_from_string(const std::string& s);
 std::optional<EncryptionId> encryption_from_string(const std::string& s);
 
-/// 给 GUI / CLI 展示的算法元信息。
+/// 给 GUI 展示的算法元信息。
 struct AlgorithmInfo {
     std::string id;     ///< 稳定 ID（小写），与 from_string 一致
     std::string label;  ///< 显示名

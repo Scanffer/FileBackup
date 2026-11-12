@@ -1,5 +1,7 @@
 #include "fs_utils.h"
 
+#include <windows.h>
+
 #include <algorithm>
 #include <system_error>
 
@@ -126,6 +128,34 @@ std::filesystem::path path_from_u8(const std::string& s) {
 #else
     return std::filesystem::u8path(s);
 #endif
+}
+
+bool clear_readonly(const std::filesystem::path& path, std::string& error) {
+    error.clear();
+
+    std::error_code ec;
+    const auto status = std::filesystem::symlink_status(path, ec);
+    if (ec) {
+        error = "无法读取属性: " + ec.message();
+        return false;
+    }
+    if (!std::filesystem::exists(status)) return true;  // 目标还不存在，无需清除
+
+    const std::wstring native = path.native();
+    const DWORD attributes = GetFileAttributesW(native.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        error = "无法读取属性: " + std::to_string(GetLastError());
+        return false;
+    }
+    if ((attributes & FILE_ATTRIBUTE_READONLY) == 0) return true;  // 本来就可写
+
+    // 只去掉只读位，其他属性（隐藏/系统/存档…）原样保留。
+    if (!SetFileAttributesW(native.c_str(),
+                            attributes & ~FILE_ATTRIBUTE_READONLY)) {
+        error = "清除只读属性失败: " + std::to_string(GetLastError());
+        return false;
+    }
+    return true;
 }
 
 }  // namespace backup

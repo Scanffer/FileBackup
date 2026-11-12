@@ -23,7 +23,7 @@
 | 评分关注点 | 本项目的应对方式 |
 |---|---|
 | **正确性** | 元数据清单带 CRC32 校验 + 可 `verify` 自检；还原后与原目录逐字节比对 |
-| **易用性** | Web GUI（目录树浏览 + 表单式筛选规则 + 实时进度条），提供 CLI 供脚本调用 |
+| **易用性** | 单个 Web GUI（目录树浏览 + 表单式筛选规则 + 实时进度条），双击即用 |
 | **健壮性** | 中断可续、磁盘满/权限拒绝/超长路径/符号链接环 均有明确处理与错误上报 |
 
 ---
@@ -179,12 +179,7 @@ Qt6 曾作为备选评估过，最终未采用。决策依据：
 
 ### 3.4 交付形态：单 exe
 
-> **2026-10 实施更新（与本文原计划不同）**：GUI 与 CLI 已经拆成两个程序：
->
-> - `FileBackup.exe`：图形界面，Windows GUI 子系统，双击启动**不会出现控制台窗口**；
-> - `FileBackup-cli.exe`：命令行，控制台子系统，stdout/stderr 可被脚本捕获。
->
-> 两者共享 `backup_core` 备份引擎，均不依赖外部 DLL（MinGW 静态链接，`WebView2Loader.dll` 内嵌进 GUI exe 的资源段）。因此下面「单 exe」的目标改为「无 DLL 依赖的双程序交付」，相关原理说明保留作为设计记录。
+> **2026-11 实施更新**：命令行入口 `FileBackup-cli.exe` 已整体移除，交付形态回归本文的目标——**单个 `FileBackup.exe`**，双击启动不出现控制台窗口，MinGW 静态链接、`WebView2Loader.dll` 内嵌进资源段，无任何外部依赖。
 
 **原计划：最终产出为单个 `FileBackup.exe`，双击即用，无任何外部依赖。**
 
@@ -246,11 +241,11 @@ Qt6 曾作为备选评估过，最终未采用。决策依据：
 └─────┬───────────────────────────────────────────────────┘
       ▼
 ┌─────────────────────────────────────────────────────────┐
-│  CLI (cli/)   命令行入口，供脚本调用与自动化测试          │
+│  GUI (gui/)   WebView2 桌面窗口入口（唯一可执行入口）     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**分层原则**：`core` 不依赖 HTTP，不依赖任何前端概念，可被 CLI 与 server 共同链接。这样即使 GUI 开发延期，核心功能依然可通过 CLI 完整演示。
+**分层原则**：`core` 不依赖 HTTP，不依赖任何前端概念，可被 server 链接，也可被单元测试直接链接。核心功能不经过界面即可完整验收。
 
 **外壳可插拔**：`web/` 中的前端代码不含任何"外壳知识"，只与 HTTP API 对话。因此"浏览器访问"与"桌面窗口"两种交付形态可以在最后阶段零成本切换（见 §3.2）。
 
@@ -393,23 +388,24 @@ class ICipher     { virtual void encrypt(...); virtual void decrypt(...); };
 
 ## 七、接口设计
 
-### 7.1 CLI（供脚本调用 / 自动化测试）
+### 7.1 入口形态（脚本调用走 REST）
+
+程序只有一个入口：双击 `FileBackup.exe`。启动后在回环地址上起 HTTP 服务（默认 `127.0.0.1:8080`），前端页面与后端逻辑全部内嵌在这一个 exe 里。
+
+需要脚本化/自动化时不必另开命令行程序，直接对这套 REST 接口发请求即可：
 
 ```bash
-# 备份
-FileBackup backup --src ./docs --dst ./bak/docs.vbak \
-                  --pack vbak --compress zstd --level 15 \
-                  --encrypt aes256cbc --password ****** \
-                  --filter '{"size":{"max":"100MB"}}'
+# 备份：打成一个 .vbak 归档
+curl -X POST http://127.0.0.1:8080/api/backup      -d "src=D:/docs" -d "dst=D:/bak/docs.vbak" -d "pack=vbak"      -d "compress=deflate" -d "level=6" -d "encrypt=aes256cbc" -d "password=******"
 
-# 还原（可只还原单个文件）
-FileBackup restore --archive ./bak/docs.vbak --dst ./restored
-FileBackup restore --archive ./bak/docs.vbak --dst ./out --entry "sub/a.txt"
+# 还原：把归档展开到目标目录
+curl -X POST http://127.0.0.1:8080/api/restore      -d "archive=D:/bak/docs.vbak" -d "dst=D:/restored" -d "metadata=1"
 
-# 查看归档内容 / 校验完整性
-FileBackup list   --archive ./bak/docs.vbak
-FileBackup verify --archive ./bak/docs.vbak
+# 查询任务进度（也可订阅 SSE 实时推送）
+curl http://127.0.0.1:8080/api/tasks/{id}
 ```
+
+> 早期设计里另有一个 `FileBackup-cli.exe` 命令行程序，2026-11 决定移除：脚本能力已由 REST 接口完整覆盖，保留两个入口只会让交付物、文档和现场演示都多维护一份。
 
 ### 7.2 REST API（供 Web GUI）
 
@@ -461,8 +457,6 @@ FileBackup/
 │   ├── watcher_win.cpp         # 【备选】ReadDirectoryChangesW 实现
 │   ├── watcher_linux.cpp       # 【备选】inotify 实现
 │   └── logger.cpp/.h           # 统一日志
-├── cli/
-│   └── main.cpp                # 命令行入口
 ├── server/
 │   ├── main.cpp                # HTTP 服务启动
 │   ├── routes.cpp/.h           # REST 路由注册
@@ -497,7 +491,7 @@ FileBackup/
 |---|---|---|---|
 | **PM / 架构** | A（组长） | `core/` 备份引擎主链路<br>`CMakeLists.txt`、`vcpkg.json` | 目录树遍历、VBAK 格式定义、打包/还原管线、仓库管理、构建系统、代码汇总与集成 |
 | **DEV / 算法** | B | `compressor_*` `crypto_*` `packer_*`<br>`filter` `metadata` `special_file` | **必选**：压缩与加密全部算法、六维筛选、元数据读写；**备选**：打包格式、特殊文件处理；单元测试 |
-| **DEV / 服务与界面** | C | `server/` `web/` `cli/` `desktop/`<br>`repo_mirror` `repo_container`<br>`scheduler` `watcher` | **必选**：HTTP API + SSE、Web GUI、目录镜像后端；**备选**：单容器后端、定时调度、文件监控、桌面外壳 |
+| **DEV / 服务与界面** | C | `server/` `gui/`<br>`repo_mirror` `repo_container`<br>`scheduler` `watcher` | **必选**：HTTP API + SSE、Web GUI、目录镜像后端；**备选**：单容器后端、定时调度、文件监控、桌面外壳 |
 
 **文档分工**（每人主笔一份，全员参与评审）：
 
@@ -516,7 +510,7 @@ FileBackup/
 | 阶段 | 周期 | 交付物 | 验收标准 | 对应分数 |
 |---|---|---|---|---|
 | **M0 立项** | 第 1 周 | 本 README、**[SETUP.md](SETUP.md)**、Git 仓库、vcpkg 环境（**`x64-windows-static`**）、`CMakePresets.json`、CMake 骨架 | `cmake --build` 能编译出空 main；全员通过 [SETUP.md §5](SETUP.md) 验证清单 | — |
-| **M1 基础通关** | 第 2–3 周 | 目录树遍历 + **目录镜像备份/还原** + CLI<br>**定义 manifest 格式**（承载元数据，见 §2.4） | 备份再还原后与原目录逐字节一致 | 基础 **40** |
+| **M1 基础通关** | 第 2–3 周 | 目录树遍历 + **目录镜像备份/还原**<br>**定义 manifest 格式**（承载元数据，见 §2.4） | 备份再还原后与原目录逐字节一致 | 基础 **40** |
 | **M2 算法攻坚** | 第 4–5 周 | 压缩×3、加密×2，接入注册表 | 各种算法组合的往返测试全绿 | +50 |
 | **M3 筛选与元数据** | 第 6 周 | 六维筛选、完整元数据读写 | 六维筛选各自生效；元数据可正确还原 | +28 |
 | **M4 界面** | 第 7 周 | HTTP API + Web GUI（浏览器模式） | 浏览器中完成「选目录→配算法→点备份→看进度→还原」全流程 | +10 |
@@ -546,7 +540,7 @@ FileBackup/
 | 演示机器缺 DLL 打不开 | 演示事故 | 采用静态链接交付单 exe（§3.4）；**装 vcpkg 时必须一次选对 `x64-windows-static`**，事后改需重编全部依赖 |
 | MSVC 运行库混用（`LNK2038`） | 链接失败 | 静态 triplet 配套设置 `CMAKE_MSVC_RUNTIME_LIBRARY`，建仓时即写入 `CMakeLists.txt` |
 | 加密后忘记密码 → 数据不可恢复 | 演示事故 | 界面上强提示；归档头写入算法 ID 便于排查；文档中明确「无后门，密码丢失不可恢复」 |
-| 成员对 C++ HTTP / 前端不熟 | 进度 | 分层设计让 `core` 完全独立，GUI 延期不影响核心功能演示；M1、M2 均可用 CLI 独立验收 |
+| 成员对 C++ HTTP / 前端不熟 | 进度 | 分层设计让 `core` 完全独立，GUI 延期不影响核心功能演示；M1、M2 均可由单元测试独立验收 |
 | 三份文档挤压编码时间 | 50 分 | 文档**边开发边写**，每个里程碑结束即补对应章节，不留在最后突击 |
 
 ---

@@ -1,6 +1,6 @@
 # FileBackup.exe —— 图形界面入口（Windows GUI 子系统）
 #
-# 和 cli/ 里的 FileBackup-cli.exe 分开链接：
+# 这是全项目唯一的可执行入口：
 #   gui 目标用 -mwindows（无控制台）+ -municode（wWinMain）+ 资源段的
 #   WebView2Loader.dll，双击就是一个干净的应用窗口。
 #
